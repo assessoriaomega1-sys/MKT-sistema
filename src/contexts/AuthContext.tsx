@@ -107,6 +107,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (oldDoc.id !== currUser.uid) {
               await deleteDoc(oldDoc.ref);
             }
+
+            // Ensure company is saved in companies collection for lookup
+            if (!userProfile.ownerId && userProfile.companyAccessCode) {
+              try {
+                await storage.saveCompany({
+                  id: currUser.uid,
+                  companyName: userProfile.agencyName || 'MKT',
+                  ownerUid: currUser.uid,
+                  ownerEmail: currUser.email || '',
+                  accessCode: userProfile.companyAccessCode,
+                  createdAt: userProfile.createdAt || new Date().toISOString()
+                });
+              } catch (compErr) {
+                console.warn('Could not sync company doc:', compErr);
+              }
+            }
           } else {
             // Brand new business owner or entrepreneur logging in!
             const names = currUser.displayName ? currUser.displayName.split(' ') : ['Empresário', ''];
@@ -261,21 +277,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Informe o código de acesso da empresa fornecido pelo dono.');
     }
 
-    // Step 1: Validate access code against registered companies
-    const foundCompany = await storage.getCompanyByAccessCode(cleanCode);
-    if (!foundCompany) {
-      throw new Error('Código de acesso da empresa inválido ou não encontrado. Verifique o código com o dono da empresa.');
-    }
+    // Pre-check if found in companies collection
+    let foundCompany = await storage.getCompanyByAccessCode(cleanCode);
 
-    // Step 2: Sign in with Google
+    // Sign in with Google (this authenticates the user in Firebase Auth)
     const provider = new GoogleAuthProvider();
     const result = await signInWithPopup(auth, provider);
     const currUser = result.user;
 
+    // If not found in public collection, search with the newly authenticated credentials
+    if (!foundCompany) {
+      foundCompany = await storage.getCompanyByAccessCode(cleanCode);
+    }
+
+    // If still not found, sign out immediately to prevent unauthorized or orphan session
+    if (!foundCompany) {
+      await signOut(auth);
+      throw new Error(`Código de acesso "${cleanCode}" não foi encontrado. Confirme o código exato com o dono da empresa.`);
+    }
+
     const names = currUser.displayName ? currUser.displayName.split(' ') : ['Colaborador', ''];
     const userRef = doc(db, 'users', currUser.uid);
 
-    // Step 3: Link collaborator directly to the company owner
+    // Link collaborator directly to the company owner
     const colabProfile: UserProfile = {
       id: currUser.uid,
       managerName: currUser.displayName || 'Colaborador',

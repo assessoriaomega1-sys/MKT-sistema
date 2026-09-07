@@ -360,7 +360,7 @@ service cloud.firestore {
                (!('ownerEmail' in data) || data.ownerEmail is string);
       }
 
-      allow list, get: if isSignedIn();
+      allow list, get: if true;
       allow create: if isSignedIn() && isValidId(companyId) && (request.auth.uid == incoming().ownerUid || request.auth.uid == companyId || isAdministrador()) && isValidCompany(incoming());
       allow update: if isSignedIn() && (existing().ownerUid == request.auth.uid || companyId == request.auth.uid || isAdministrador()) && isValidCompany(incoming());
       allow delete: if isSignedIn() && (existing().ownerUid == request.auth.uid || isAdministrador());

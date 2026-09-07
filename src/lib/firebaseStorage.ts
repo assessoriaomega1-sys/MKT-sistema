@@ -1319,29 +1319,73 @@ export const firebaseStorage = {
   // COMPANIES & ACCESS CODES
   getCompanyByAccessCode: async (code: string): Promise<Company | null> => {
     const cleanCode = code.trim().toUpperCase();
+    const rawCode = code.trim();
     if (!cleanCode) return null;
     try {
-      // 1. Search in companies collection
-      const q = query(collection(db, COMPANIES_COL), where('accessCode', '==', cleanCode));
-      const snap = await getDocs(q);
+      // 1. Search in companies collection (normalized uppercase)
+      let q = query(collection(db, COMPANIES_COL), where('accessCode', '==', cleanCode));
+      let snap = await getDocs(q);
       if (!snap.empty) {
         return { ...snap.docs[0].data(), id: snap.docs[0].id } as Company;
       }
 
-      // 2. Fallback: Search in users collection where companyAccessCode matches
-      const qUser = query(collection(db, USERS_COL), where('companyAccessCode', '==', cleanCode));
-      const snapUser = await getDocs(qUser);
-      if (!snapUser.empty) {
-        const u = snapUser.docs[0].data() as UserProfile;
-        return {
-          id: snapUser.docs[0].id,
-          companyName: u.agencyName || 'Empresa',
-          ownerUid: snapUser.docs[0].id,
-          ownerEmail: u.email,
-          accessCode: cleanCode,
-          createdAt: u.createdAt || new Date().toISOString()
-        };
+      // 1b. Search in companies collection (raw case if different)
+      if (rawCode !== cleanCode) {
+        q = query(collection(db, COMPANIES_COL), where('accessCode', '==', rawCode));
+        snap = await getDocs(q);
+        if (!snap.empty) {
+          return { ...snap.docs[0].data(), id: snap.docs[0].id } as Company;
+        }
       }
+
+      // 1c. Scan all companies in memory as fallback (handles any case/trimming mismatch)
+      try {
+        const allCompaniesSnap = await getDocs(collection(db, COMPANIES_COL));
+        for (const docSnap of allCompaniesSnap.docs) {
+          const cData = docSnap.data() as Company;
+          if (cData.accessCode && cData.accessCode.trim().toUpperCase() === cleanCode) {
+            return { ...cData, id: docSnap.id };
+          }
+        }
+      } catch (scanErr) {
+        // Ignore if permission denied
+      }
+
+      // 2. Fallback: Search in users collection where companyAccessCode matches (requires signed in auth)
+      try {
+        const qUser = query(collection(db, USERS_COL), where('companyAccessCode', '==', cleanCode));
+        const snapUser = await getDocs(qUser);
+        if (!snapUser.empty) {
+          const u = snapUser.docs[0].data() as UserProfile;
+          return {
+            id: snapUser.docs[0].id,
+            companyName: u.agencyName || 'Empresa',
+            ownerUid: snapUser.docs[0].id,
+            ownerEmail: u.email,
+            accessCode: cleanCode,
+            createdAt: u.createdAt || new Date().toISOString()
+          };
+        }
+
+        if (rawCode !== cleanCode) {
+          const qUserRaw = query(collection(db, USERS_COL), where('companyAccessCode', '==', rawCode));
+          const snapUserRaw = await getDocs(qUserRaw);
+          if (!snapUserRaw.empty) {
+            const u = snapUserRaw.docs[0].data() as UserProfile;
+            return {
+              id: snapUserRaw.docs[0].id,
+              companyName: u.agencyName || 'Empresa',
+              ownerUid: snapUserRaw.docs[0].id,
+              ownerEmail: u.email,
+              accessCode: cleanCode,
+              createdAt: u.createdAt || new Date().toISOString()
+            };
+          }
+        }
+      } catch (userErr) {
+        // May fail if not yet signed in
+      }
+
       return null;
     } catch (error) {
       console.error('Error finding company by access code:', error);

@@ -90,17 +90,8 @@ export function LoginPage() {
 
     setIsSubmitting(true);
     try {
-      // 1. Verify access code existence
-      const company = await storage.getCompanyByAccessCode(cleanCode);
-      if (!company) {
-        toast.error('Código de acesso inválido ou empresa não encontrada! Solicite o código correto ao dono da sua empresa.');
-        setIsSubmitting(false);
-        return;
-      }
-
-      toast.info(`Empresa localizada: "${company.companyName}". Conectando com Google...`);
-      await signInAsCollaborator(cleanCode, company.companyName);
-      toast.success(`Bem-vindo à equipe da ${company.companyName}!`);
+      await signInAsCollaborator(cleanCode, colabCompanyName.trim());
+      toast.success('Login de colaborador realizado com sucesso!');
     } catch (error) {
       handleAuthError(error);
     } finally {
