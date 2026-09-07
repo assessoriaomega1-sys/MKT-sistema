@@ -1,0 +1,8 @@
+{
+  "name": "MKT Gestor",
+  "description": "Plataforma de gestão completa e tráfego pago para donos de empresas e empresários organizarem seus negócios, clientes e métricas em tempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

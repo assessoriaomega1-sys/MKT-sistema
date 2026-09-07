@@ -1,0 +1,369 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdministrador() {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roleName == 'Administrador';
+    }
+
+    function isCollaboratorOf(targetOwnerId) {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             'ownerId' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.ownerId == targetOwnerId;
+    }
+
+    function isOwner(obj) {
+      return isSignedIn() && (
+        isAdministrador() || 
+        !('ownerId' in obj) || 
+        obj.ownerId == request.auth.uid ||
+        isCollaboratorOf(obj.ownerId)
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // User Profile
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.managerName is string && data.managerName.size() <= 150 &&
+               data.theme in ['light', 'dark'] &&
+               (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+               (!('roleName' in data) || (data.roleName is string && data.roleName.size() <= 100)) &&
+               (!('status' in data) || (data.status in ['ACTIVE', 'INACTIVE']));
+      }
+
+      allow list, get: if isSignedIn();
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdministrador()) && isValidUser(incoming());
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdministrador()) && isValidUser(incoming());
+      allow delete: if isSignedIn() && isAdministrador();
+    }
+
+    // Clients
+    match /clients/{clientId} {
+      function isValidClient(data) {
+        return data.name is string && data.name.size() <= 150 &&
+               data.businessType in ['SERVICE_BOOKING', 'ECOMMERCE', 'B2B_LEADS', 'WHATSAPP', 'INFO_PRODUCTS', 'REAL_ESTATE', 'LOCAL_BUSINESS', 'VIDEO_PRODUCTION', 'CONTENT_EDITING', 'LAUNCH'] &&
+               data.ownerId == request.auth.uid &&
+               data.brandColor is string &&
+               data.get('accessInfo', []) is list &&
+               data.smartGoal is map;
+      }
+
+      allow list: if isSignedIn() && isOwner(resource.data);
+      allow get: if isSignedIn() && isOwner(resource.data);
+      allow create: if isSignedIn() && isValidId(clientId) && isValidClient(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidClient(incoming()) &&
+                    (!('ownerId' in existing()) || incoming().ownerId == existing().ownerId);
+      allow delete: if isSignedIn() && isOwner(existing());
+
+      // Metric Entries (Sub-collection)
+      match /entries/{entryId} {
+        function isValidEntry(data, cid) {
+          return data.clientId == cid &&
+                 (data.investment is int || data.investment is float) &&
+                 data.date is string &&
+                 data.ownerId == request.auth.uid;
+        }
+
+        allow list: if isSignedIn() && isOwner(resource.data);
+        allow get: if isSignedIn() && isOwner(resource.data);
+        allow create: if isSignedIn() && isValidId(entryId) && isValidEntry(incoming(), clientId);
+        allow update: if isSignedIn() && isOwner(existing()) && isValidEntry(incoming(), clientId) &&
+                      (!('ownerId' in existing()) || incoming().ownerId == existing().ownerId);
+        allow delete: if isSignedIn() && isOwner(existing());
+      }
+    }
+
+    // Collection Group support for Metric Entries
+    match /{path=**}/entries/{entryId} {
+      allow list: if isSignedIn() && isOwner(resource.data);
+    }
+
+    // Sales Registry
+    match /sales/{saleId} {
+      function isValidSale(data) {
+        return data.clientId is string && data.clientId.size() <= 128 &&
+               (data.value is int || data.value is float) &&
+               data.date is string && data.date.size() <= 64 &&
+               data.status in ['PAID', 'PENDING', 'PAGO', 'PENDENTE'] &&
+               data.ownerId == request.auth.uid;
+      }
+
+      allow list: if isSignedIn() && isOwner(resource.data);
+      allow get: if isSignedIn() && isOwner(resource.data);
+      allow create: if isSignedIn() && isValidId(saleId) && isValidSale(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidSale(incoming()) &&
+                    (!('ownerId' in existing()) || incoming().ownerId == existing().ownerId);
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+
+    // Commercial Goals
+    match /goals/{goalId} {
+      function isValidGoal(data) {
+        return (data.month is int || data.month is float) &&
+               (data.year is int || data.year is float) &&
+               (data.target is int || data.target is float) &&
+               (!('notes' in data) || data.notes is string) &&
+               data.ownerId == request.auth.uid;
+      }
+
+      allow list: if isSignedIn() && isOwner(resource.data);
+      allow get: if isSignedIn() && isOwner(resource.data);
+      allow create: if isSignedIn() && isValidId(goalId) && isValidGoal(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidGoal(incoming()) &&
+                    (!('ownerId' in existing()) || incoming().ownerId == existing().ownerId);
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+
+    // Monthly Payments
+    match /payments/{paymentId} {
+      function isValidPayment(data) {
+        return data.clientId is string &&
+               (data.month is int || data.month is float) &&
+               (data.year is int || data.year is float) &&
+               data.status in ['PAID', 'PENDING'] &&
+               (data.value is int || data.value is float) &&
+               data.ownerId == request.auth.uid;
+      }
+
+      allow list: if isSignedIn() && isOwner(resource.data);
+      allow get: if isSignedIn() && isOwner(resource.data);
+      allow create: if isSignedIn() && isValidId(paymentId) && isValidPayment(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidPayment(incoming()) &&
+                    incoming().ownerId == existing().ownerId;
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+
+    // Financial Releases (FOLHA)
+    match /financial_releases/{releaseId} {
+      function isValidRelease(data) {
+        return data.date is string && data.date.size() <= 64 &&
+               data.description is string && data.description.size() <= 300 &&
+               data.category is string && data.category.size() <= 100 &&
+               data.type in ['RECEITA', 'GASTO', 'INVESTIMENTO'] &&
+               (data.value is int || data.value is float) &&
+               (!('observation' in data) || (data.observation is string && data.observation.size() <= 1000)) &&
+               data.ownerId == request.auth.uid;
+      }
+
+      allow list: if isSignedIn() && isOwner(resource.data);
+      allow get: if isSignedIn() && isOwner(resource.data);
+      allow create: if isSignedIn() && isValidId(releaseId) && isValidRelease(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidRelease(incoming()) &&
+                    incoming().ownerId == existing().ownerId;
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+
+    // Recurring Bills
+    match /recurring_bills/{billId} {
+      function isValidBill(data) {
+        return data.description is string && data.description.size() <= 300 &&
+               (data.value is int || data.value is float) &&
+               (data.dueDay is int || data.dueDay is float) && data.dueDay >= 1 && data.dueDay <= 31 &&
+               data.ownerId == request.auth.uid;
+      }
+
+      allow list: if isSignedIn() && isOwner(resource.data);
+      allow get: if isSignedIn() && isOwner(resource.data);
+      allow create: if isSignedIn() && isValidId(billId) && isValidBill(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidBill(incoming()) &&
+                    incoming().ownerId == existing().ownerId;
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+
+    // Financial Goals
+    match /financial_goals/{goalId} {
+      function isValidFinancialGoal(data) {
+        return (data.month is int || data.month is float) &&
+               (data.year is int || data.year is float) &&
+               (data.target is int || data.target is float) &&
+               data.ownerId == request.auth.uid;
+      }
+
+      allow list: if isSignedIn() && isOwner(resource.data);
+      allow get: if isSignedIn() && isOwner(resource.data);
+      allow create: if isSignedIn() && isValidId(goalId) && isValidFinancialGoal(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidFinancialGoal(incoming()) &&
+                    incoming().ownerId == existing().ownerId;
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+
+    // Creatives (Traffic Creative Intelligence)
+    match /creatives/{creativeId} {
+      function isValidCreative(data) {
+        return data.code is string &&
+               data.title is string && data.title.size() <= 200 &&
+               data.status in ['IDEIA', 'PRODUZIDO', 'EDITADO', 'TESTE_CAMPANHA', 'VALIDADO', 'DESCARTADO'] &&
+               data.type is string &&
+               data.objective is string &&
+               data.creationDate is string &&
+               (data.rating is int || data.rating is float) && data.rating >= 1 && data.rating <= 5 &&
+               (!('isUrgent' in data) || data.isUrgent is bool) &&
+               data.ownerId == request.auth.uid;
+      }
+
+      allow list: if isSignedIn() && isOwner(resource.data);
+      allow get: if isSignedIn() && isOwner(resource.data);
+      allow create: if isSignedIn() && isValidId(creativeId) && isValidCreative(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidCreative(incoming()) &&
+                    incoming().ownerId == existing().ownerId;
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+
+    // Processes
+    match /processes/{processId} {
+      function isValidProcess(data) {
+        return data.name is string && data.name.size() <= 150 &&
+               data.color is string && data.color.size() <= 50 &&
+               (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+               (!('icon' in data) || (data.icon is string && data.icon.size() <= 100)) &&
+               (!('teamResponsible' in data) || (data.teamResponsible is list)) &&
+               data.status in ['ACTIVE', 'INACTIVE'] &&
+               data.createdAt is string && data.createdAt.size() <= 100 &&
+               data.ownerId == request.auth.uid;
+      }
+
+      allow list: if isSignedIn() && isOwner(resource.data);
+      allow get: if isSignedIn() && isOwner(resource.data);
+      allow create: if isSignedIn() && isValidId(processId) && isValidProcess(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidProcess(incoming()) &&
+                    incoming().ownerId == existing().ownerId;
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+
+    // Process Columns
+    match /process_columns/{columnId} {
+      function isValidColumn(data) {
+        return data.processoId is string && data.processoId.size() <= 128 &&
+               data.name is string && data.name.size() <= 150 &&
+               (data.order is int || data.order is float) &&
+               data.createdAt is string && data.createdAt.size() <= 100 &&
+               data.ownerId == request.auth.uid;
+      }
+
+      allow list: if isSignedIn() && isOwner(resource.data);
+      allow get: if isSignedIn() && isOwner(resource.data);
+      allow create: if isSignedIn() && isValidId(columnId) && isValidColumn(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidColumn(incoming()) &&
+                    incoming().ownerId == existing().ownerId;
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+
+    // Process Tasks
+    match /process_tasks/{taskId} {
+      function isValidTask(data) {
+        return data.processoId is string && data.processoId.size() <= 128 &&
+               data.columnId is string && data.columnId.size() <= 128 &&
+               data.title is string && data.title.size() <= 200 &&
+               (!('description' in data) || data.description == null || (data.description is string && data.description.size() <= 4000)) &&
+               (!('clientId' in data) || data.clientId == null || (data.clientId is string && data.clientId.size() <= 128)) &&
+               (!('clientName' in data) || data.clientName == null || (data.clientName is string && data.clientName.size() <= 200)) &&
+               (!('responsible' in data) || data.responsible == null || (data.responsible is string && data.responsible.size() <= 150)) &&
+               (!('dueDate' in data) || data.dueDate == null || (data.dueDate is string && data.dueDate.size() <= 64)) &&
+               (!('dueTime' in data) || data.dueTime == null || (data.dueTime is string && data.dueTime.size() <= 64)) &&
+               data.priority in ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] &&
+               data.status in ['PENDING', 'PROGRESS', 'DONE', 'DELAYED'] &&
+               (!('labels' in data) || data.labels == null || (data.labels is list)) &&
+               data.createdAt is string && data.createdAt.size() <= 100 &&
+               (!('completedAt' in data) || data.completedAt == null || (data.completedAt is string && data.completedAt.size() <= 100)) &&
+               (!('timeSpentSeconds' in data) || data.timeSpentSeconds == null || (data.timeSpentSeconds is int || data.timeSpentSeconds is float)) &&
+               (!('attachments' in data) || data.attachments == null || (data.attachments is list)) &&
+               (!('checklist' in data) || data.checklist == null || (data.checklist is list)) &&
+               (!('comments' in data) || data.comments == null || (data.comments is list)) &&
+               (!('history' in data) || data.history == null || (data.history is list)) &&
+               data.ownerId == request.auth.uid;
+      }
+
+      allow list: if isSignedIn() && isOwner(resource.data);
+      allow get: if isSignedIn() && isOwner(resource.data);
+      allow create: if isSignedIn() && isValidId(taskId) && isValidTask(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidTask(incoming()) &&
+                    incoming().ownerId == existing().ownerId;
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+
+    // Process Automations
+    match /process_automations/{automationId} {
+      function isValidAutomation(data) {
+        return data.processoId is string && data.processoId.size() <= 128 &&
+               data.triggerColumnId is string && data.triggerColumnId.size() <= 128 &&
+               data.actionType in ['NOTIFY', 'CREATE_TASK', 'MARK_DEMAND_DONE', 'SET_STATUS_DELAYED'] &&
+               (!('actionParams' in data) || (data.actionParams is map)) &&
+               data.isActive is bool &&
+               data.ownerId == request.auth.uid;
+      }
+
+      allow list: if isSignedIn() && isOwner(resource.data);
+      allow get: if isSignedIn() && isOwner(resource.data);
+      allow create: if isSignedIn() && isValidId(automationId) && isValidAutomation(incoming());
+      allow update: if isSignedIn() && isOwner(existing()) && isValidAutomation(incoming()) &&
+                    incoming().ownerId == existing().ownerId;
+      allow delete: if isSignedIn() && isOwner(existing());
+    }
+
+    // Roles
+    match /roles/{roleId} {
+      function isValidRole(data) {
+        return data.name is string && data.name.size() <= 100 &&
+               data.permissions is map;
+      }
+
+      allow list, get: if isSignedIn();
+      allow create: if isSignedIn() && isAdministrador() && isValidId(roleId) && isValidRole(incoming());
+      allow update: if isSignedIn() && isAdministrador() && isValidRole(incoming());
+      allow delete: if isSignedIn() && isAdministrador();
+    }
+
+    // Activity Logs
+    match /activity_logs/{logId} {
+      function isValidLog(data) {
+        return data.actorId is string && data.actorId.size() <= 128 &&
+               data.actorName is string && data.actorName.size() <= 150 &&
+               data.action is string && data.action.size() <= 200 &&
+               data.timestamp is string && data.timestamp.size() <= 100;
+      }
+
+      allow list, get: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(logId) && isValidLog(incoming());
+      allow update, delete: if isSignedIn() && isAdministrador();
+    }
+
+    // Companies
+    match /companies/{companyId} {
+      function isValidCompany(data) {
+        return data.companyName is string && data.companyName.size() <= 150 &&
+               data.accessCode is string && data.accessCode.size() <= 64 &&
+               data.ownerUid is string &&
+               (!('ownerEmail' in data) || data.ownerEmail is string);
+      }
+
+      allow list, get: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(companyId) && (request.auth.uid == incoming().ownerUid || request.auth.uid == companyId || isAdministrador()) && isValidCompany(incoming());
+      allow update: if isSignedIn() && (existing().ownerUid == request.auth.uid || companyId == request.auth.uid || isAdministrador()) && isValidCompany(incoming());
+      allow delete: if isSignedIn() && (existing().ownerUid == request.auth.uid || isAdministrador());
+    }
+  }
+}

@@ -1,0 +1,366 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User specific settings and profile data.",
+      "type": "object",
+      "properties": {
+        "managerName": { "type": "string" },
+        "theme": { "type": "string", "enum": ["light", "dark"] },
+        "trafficPanelUrl": { "type": "string" },
+        "executiveConfig": { "type": "object" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "phone": { "type": "string" },
+        "roleId": { "type": "string" },
+        "roleName": { "type": "string" },
+        "team": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE"] },
+        "lastAccess": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "customPermissions": { "type": "object" },
+        "restrictedClients": { "type": "array", "items": { "type": "string" } },
+        "restrictedProcesses": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["managerName", "theme"]
+    },
+    "Company": {
+      "title": "Company",
+      "description": "Company registration and access code configuration for collaborators.",
+      "type": "object",
+      "properties": {
+        "companyName": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "accessCode": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["companyName", "ownerUid", "accessCode"]
+    },
+    "Role": {
+      "title": "User Role",
+      "description": "Role-based access control permission definition.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "permissions": { "type": "object" },
+        "createdAt": { "type": "string" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["name", "permissions"]
+    },
+    "ActivityLog": {
+      "title": "Activity Log",
+      "description": "Audit trail logs for security and admin modifications.",
+      "type": "object",
+      "properties": {
+        "actorId": { "type": "string" },
+        "actorName": { "type": "string" },
+        "targetUserId": { "type": "string" },
+        "targetUserName": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["actorId", "actorName", "action", "timestamp"]
+    },
+    "Client": {
+      "title": "Client",
+      "description": "A client managed by the user.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "accountManager": { "type": "string" },
+        "logo": { "type": "string" },
+        "brandColor": { "type": "string" },
+        "businessType": { "type": "string", "enum": ["SERVICE_BOOKING", "ECOMMERCE", "B2B_LEADS", "WHATSAPP", "INFO_PRODUCTS", "REAL_ESTATE", "LOCAL_BUSINESS", "VIDEO_PRODUCTION", "CONTENT_EDITING"] },
+        "smartGoal": { "$ref": "SmartGoal" },
+        "channels": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "ownerId": { "type": "string" },
+        "customFunnelSteps": { "type": "array" },
+        "ownerNames": { "type": "string" },
+        "planValue": { "type": "number" },
+        "planScope": { "type": "string" },
+        "contractUrl": { "type": "string" },
+        "managementStatus": { "type": "string", "enum": ["GREEN", "YELLOW", "RED"] },
+        "billingModel": { "type": "string", "enum": ["RECURRING", "ONE_OFF"] }
+      },
+      "required": ["name", "brandColor", "businessType", "smartGoal", "ownerId"]
+    },
+    "SmartGoal": {
+      "title": "Smart Goal",
+      "type": "object",
+      "properties": {
+        "currentRevenue": { "type": "number" },
+        "targetRevenue": { "type": "number" },
+        "durationMonths": { "type": "number" },
+        "adSpend": { "type": "number" },
+        "funnelSteps": { "type": "array" },
+        "ticket": { "type": "number" }
+      }
+    },
+    "MetricEntry": {
+      "title": "Metric Entry",
+      "description": "Monthly performance metrics for a client.",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "investment": { "type": "number" },
+        "leads": { "type": "number" },
+        "bookings": { "type": "number" },
+        "shows": { "type": "number" },
+        "sales": { "type": "number" },
+        "revenue": { "type": "number" },
+        "profit": { "type": "number" },
+        "cac": { "type": "number" },
+        "sessions": { "type": "number" },
+        "addCart": { "type": "number" },
+        "checkouts": { "type": "number" },
+        "purchases": { "type": "number" },
+        "mqls": { "type": "number" },
+        "meetings": { "type": "number" },
+        "proposals": { "type": "number" },
+        "waClicks": { "type": "number" },
+        "waConversations": { "type": "number" },
+        "qualifiedLeads": { "type": "number" },
+        "customData": { "type": "object" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["clientId", "date", "investment", "ownerId"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "A single sale record.",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "service": { "type": "string" },
+        "value": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["PAID", "PENDING"] },
+        "origin": { "type": "string" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["clientId", "value", "date", "status", "ownerId"]
+    },
+    "CommercialGoal": {
+      "title": "Commercial Goal",
+      "description": "Monthly commercial target/goal.",
+      "type": "object",
+      "properties": {
+        "month": { "type": "number" },
+        "year": { "type": "number" },
+        "target": { "type": "number" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["month", "year", "target", "ownerId"]
+    },
+    "FinancialRelease": {
+      "title": "Financial Release",
+      "description": "A single financial lease/transaction record.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "type": { "type": "string", "enum": ["RECEITA", "GASTO", "INVESTIMENTO"] },
+        "value": { "type": "number" },
+        "observation": { "type": "string" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["date", "description", "category", "type", "value", "ownerId"]
+    },
+    "RecurringBill": {
+      "title": "Recurring Bill",
+      "description": "A recurring fixed account/bill.",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "value": { "type": "number" },
+        "dueDay": { "type": "number" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["description", "value", "dueDay", "ownerId"]
+    },
+    "FinancialGoal": {
+      "title": "Financial Goal",
+      "description": "Monthly financial goal.",
+      "type": "object",
+      "properties": {
+        "month": { "type": "number" },
+        "year": { "type": "number" },
+        "target": { "type": "number" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["month", "year", "target", "ownerId"]
+    },
+    "Creative": {
+      "title": "Creative Intelligence",
+      "description": "An advertisement creative stored in the Omega creative bank.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "title": { "type": "string" },
+        "status": { "type": "string", "enum": ["IDEIA", "PRODUZIDO", "EDITADO", "TESTE_CAMPANHA", "VALIDADO", "DESCARTADO"] },
+        "type": { "type": "string" },
+        "objective": { "type": "string" },
+        "creationDate": { "type": "string" },
+        "publishDate": { "type": "string" },
+        "validationDate": { "type": "string" },
+        "rating": { "type": "number" },
+        "validationReason": { "type": "string" },
+        "script": { "type": "string" },
+        "observations": { "type": "string" },
+        "learnings": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "isUrgent": { "type": "boolean" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["code", "title", "status", "type", "objective", "creationDate", "rating", "ownerId"]
+    },
+    "Processo": {
+      "title": "Process",
+      "description": "A workflow process or pipeline.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "color": { "type": "string" },
+        "icon": { "type": "string" },
+        "teamResponsible": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE"] },
+        "createdAt": { "type": "string" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["name", "color", "status", "createdAt", "ownerId"]
+    },
+    "ProcessColumn": {
+      "title": "Process Column",
+      "description": "A stage or column within a process workflow.",
+      "type": "object",
+      "properties": {
+        "processoId": { "type": "string" },
+        "name": { "type": "string" },
+        "order": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["processoId", "name", "order", "createdAt", "ownerId"]
+    },
+    "ProcessTask": {
+      "title": "Process Task",
+      "description": "A task or card moving through a process workflow.",
+      "type": "object",
+      "properties": {
+        "processoId": { "type": "string" },
+        "columnId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "responsible": { "type": "string" },
+        "dueDate": { "type": "string" },
+        "dueTime": { "type": "string" },
+        "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "URGENT"] },
+        "status": { "type": "string", "enum": ["PENDING", "PROGRESS", "DONE", "DELAYED"] },
+        "labels": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string" },
+        "completedAt": { "type": "string" },
+        "timeSpentSeconds": { "type": "number" },
+        "attachments": { "type": "array" },
+        "checklist": { "type": "array" },
+        "comments": { "type": "array" },
+        "history": { "type": "array" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["processoId", "columnId", "title", "priority", "status", "createdAt", "ownerId"]
+    },
+    "ProcessAutomation": {
+      "title": "Process Automation",
+      "description": "An automation rule linked to a process stage.",
+      "type": "object",
+      "properties": {
+        "processoId": { "type": "string" },
+        "triggerColumnId": { "type": "string" },
+        "actionType": { "type": "string", "enum": ["NOTIFY", "CREATE_TASK", "MARK_DEMAND_DONE", "SET_STATUS_DELAYED"] },
+        "actionParams": { "type": "object" },
+        "isActive": { "type": "boolean" },
+        "ownerId": { "type": "string" }
+      },
+      "required": ["processoId", "triggerColumnId", "actionType", "isActive", "ownerId"]
+    }
+  },
+  "firestore": {
+    "/creatives/{creativeId}": {
+      "schema": "Creative",
+      "description": "Traffic Creative intelligence library."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile and settings."
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Clients collection."
+    },
+    "/clients/{clientId}/entries/{entryId}": {
+      "schema": "MetricEntry",
+      "description": "Metric entries sub-collection for each client."
+    },
+    "/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "Sales collection."
+    },
+    "/goals/{goalId}": {
+      "schema": "CommercialGoal",
+      "description": "Goals collection."
+    },
+    "/financial_releases/{releaseId}": {
+      "schema": "FinancialRelease",
+      "description": "Collection of all companies' manual financial releases."
+    },
+    "/recurring_bills/{billId}": {
+      "schema": "RecurringBill",
+      "description": "Collection of recurring fixed accounts/bills."
+    },
+    "/financial_goals/{goalId}": {
+      "schema": "FinancialGoal",
+      "description": "Collection of financial monthly goals."
+    },
+    "/processes/{processId}": {
+      "schema": "Processo",
+      "description": "Collection of workflow processes/pipelines."
+    },
+    "/process_columns/{columnId}": {
+      "schema": "ProcessColumn",
+      "description": "Collection of process stages/columns."
+    },
+    "/process_tasks/{taskId}": {
+      "schema": "ProcessTask",
+      "description": "Collection of workflow tasks."
+    },
+    "/process_automations/{automationId}": {
+      "schema": "ProcessAutomation",
+      "description": "Collection of process automations."
+    },
+    "/roles/{roleId}": {
+      "schema": "Role",
+      "description": "Collection of RBAC roles and permissions."
+    },
+    "/activity_logs/{logId}": {
+      "schema": "ActivityLog",
+      "description": "Collection of security and audit logs."
+    },
+    "/companies/{companyId}": {
+      "schema": "Company",
+      "description": "Collection of companies and their team access codes."
+    }
+  }
+}

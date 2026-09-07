@@ -1,0 +1,172 @@
+import { ModulePermissions } from '../types';
+
+export const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, ModulePermissions>> = {
+  'Administrador': {
+    dashboard: { view: true, edit: true },
+    clientes: { view: true, create: true, edit: true, delete: true },
+    demandas: { view: true, create: true, edit: true, complete: true, delete: true },
+    processos: { view: true, createProcess: true, editProcess: true, moveCards: true, createCards: true, deleteCards: true },
+    comercial: { view: true, createSale: true, editSale: true, deleteSale: true, editGoals: true },
+    financeiro: { view: true, edit: true },
+    relatorios: { view: true },
+    trafego: { view: true },
+    configuracoes: { view: true, edit: true },
+    usuarios: { view: true, create: true, edit: true, delete: true, editPermissions: true }
+  },
+  'Empresário': {
+    dashboard: { view: true, edit: true },
+    clientes: { view: true, create: true, edit: true, delete: true },
+    demandas: { view: true, create: true, edit: true, complete: true, delete: true },
+    processos: { view: true, createProcess: true, editProcess: true, moveCards: true, createCards: true, deleteCards: true },
+    comercial: { view: true, createSale: true, editSale: true, deleteSale: true, editGoals: true },
+    financeiro: { view: true, edit: true },
+    relatorios: { view: true },
+    trafego: { view: true },
+    configuracoes: { view: true, edit: true },
+    usuarios: { view: true, create: true, edit: true, delete: true, editPermissions: true }
+  },
+  'Dono': {
+    dashboard: { view: true, edit: true },
+    clientes: { view: true, create: true, edit: true, delete: true },
+    demandas: { view: true, create: true, edit: true, complete: true, delete: true },
+    processos: { view: true, createProcess: true, editProcess: true, moveCards: true, createCards: true, deleteCards: true },
+    comercial: { view: true, createSale: true, editSale: true, deleteSale: true, editGoals: true },
+    financeiro: { view: true, edit: true },
+    relatorios: { view: true },
+    trafego: { view: true },
+    configuracoes: { view: true, edit: true },
+    usuarios: { view: true, create: true, edit: true, delete: true, editPermissions: true }
+  },
+  'Diretor': {
+    dashboard: { view: true, edit: true },
+    clientes: { view: true, create: true, edit: true, delete: false },
+    demandas: { view: true, create: true, edit: true, complete: true, delete: false },
+    processos: { view: true, createProcess: true, editProcess: true, moveCards: true, createCards: true, deleteCards: false },
+    comercial: { view: true, createSale: true, editSale: true, deleteSale: false, editGoals: true },
+    financeiro: { view: true, edit: true },
+    relatorios: { view: true },
+    trafego: { view: true },
+    configuracoes: { view: true, edit: false },
+    usuarios: { view: false, create: false, edit: false, delete: false, editPermissions: false }
+  },
+  'Gestor': {
+    dashboard: { view: true, edit: false },
+    clientes: { view: true, create: true, edit: true, delete: false },
+    demandas: { view: true, create: true, edit: true, complete: true, delete: false },
+    processos: { view: true, createProcess: false, editProcess: false, moveCards: true, createCards: true, deleteCards: false },
+    comercial: { view: true, createSale: true, editSale: true, deleteSale: false, editGoals: false },
+    financeiro: { view: true, edit: false },
+    relatorios: { view: true },
+    trafego: { view: true },
+    configuracoes: { view: true, edit: false },
+    usuarios: { view: false, create: false, edit: false, delete: false, editPermissions: false }
+  },
+  'Comercial': {
+    dashboard: { view: true, edit: false },
+    clientes: { view: true, create: true, edit: false, delete: false },
+    demandas: { view: true, create: true, edit: false, complete: false, delete: false },
+    processos: { view: true, createProcess: false, editProcess: false, moveCards: false, createCards: false, deleteCards: false },
+    comercial: { view: true, createSale: true, editSale: true, deleteSale: false, editGoals: false },
+    financeiro: { view: false, edit: false },
+    relatorios: { view: false },
+    trafego: { view: false },
+    configuracoes: { view: false, edit: false },
+    usuarios: { view: false, create: false, edit: false, delete: false, editPermissions: false }
+  },
+  'Social Media': {
+    dashboard: { view: true, edit: false },
+    clientes: { view: true, create: false, edit: false, delete: false },
+    demandas: { view: true, create: true, edit: true, complete: true, delete: false },
+    processos: { view: true, createProcess: false, editProcess: false, moveCards: true, createCards: true, deleteCards: false },
+    comercial: { view: false, edit: false },
+    financeiro: { view: false, edit: false },
+    relatorios: { view: false },
+    trafego: { view: false },
+    configuracoes: { view: false, edit: false },
+    usuarios: { view: false, create: false, edit: false, delete: false, editPermissions: false }
+  },
+  'Editor de Vídeo': {
+    dashboard: { view: true, edit: false },
+    clientes: { view: false, create: false, edit: false, delete: false },
+    demandas: { view: true, create: false, edit: true, complete: true, delete: false },
+    processos: { view: true, createProcess: false, editProcess: false, moveCards: true, createCards: true, deleteCards: false },
+    comercial: { view: false, edit: false },
+    financeiro: { view: false, edit: false },
+    relatorios: { view: false },
+    trafego: { view: false },
+    configuracoes: { view: false, edit: false },
+    usuarios: { view: false, create: false, edit: false, delete: false, editPermissions: false }
+  },
+  'Designer': {
+    dashboard: { view: true, edit: false },
+    clientes: { view: false, create: false, edit: false, delete: false },
+    demandas: { view: true, create: false, edit: true, complete: true, delete: false },
+    processos: { view: true, createProcess: false, editProcess: false, moveCards: true, createCards: true, deleteCards: false },
+    comercial: { view: false, edit: false },
+    financeiro: { view: false, edit: false },
+    relatorios: { view: false },
+    trafego: { view: false },
+    configuracoes: { view: false, edit: false },
+    usuarios: { view: false, create: false, edit: false, delete: false, editPermissions: false }
+  },
+  'Gestor de Tráfego': {
+    dashboard: { view: true, edit: false },
+    clientes: { view: true, create: false, edit: false, delete: false },
+    demandas: { view: true, create: true, edit: true, complete: true, delete: false },
+    processos: { view: true, createProcess: false, editProcess: false, moveCards: true, createCards: true, deleteCards: false },
+    comercial: { view: false, edit: false },
+    financeiro: { view: false, edit: false },
+    relatorios: { view: true },
+    trafego: { view: true },
+    configuracoes: { view: false, edit: false },
+    usuarios: { view: false, create: false, edit: false, delete: false, editPermissions: false }
+  },
+  'Atendimento': {
+    dashboard: { view: true, edit: false },
+    clientes: { view: true, create: true, edit: true, delete: false },
+    demandas: { view: true, create: true, edit: true, complete: true, delete: false },
+    processos: { view: true, createProcess: false, editProcess: false, moveCards: true, createCards: true, deleteCards: false },
+    comercial: { view: false, edit: false },
+    financeiro: { view: false, edit: false },
+    relatorios: { view: false },
+    trafego: { view: false },
+    configuracoes: { view: false, edit: false },
+    usuarios: { view: false, create: false, edit: false, delete: false, editPermissions: false }
+  },
+  'Financeiro': {
+    dashboard: { view: true, edit: false },
+    clientes: { view: true, create: false, edit: false, delete: false },
+    demandas: { view: false, create: false, edit: false, delete: false },
+    processos: { view: false, createProcess: false, editProcess: false, moveCards: false, createCards: false, deleteCards: false },
+    comercial: { view: true, createSale: false, editSale: false, deleteSale: false, editGoals: false },
+    financeiro: { view: true, edit: true },
+    relatorios: { view: true },
+    trafego: { view: false },
+    configuracoes: { view: false, edit: false },
+    usuarios: { view: false, create: false, edit: false, delete: false, editPermissions: false }
+  },
+  'RH': {
+    dashboard: { view: true, edit: false },
+    clientes: { view: false, create: false, edit: false, delete: false },
+    demandas: { view: false, create: false, edit: false, delete: false },
+    processos: { view: false, createProcess: false, editProcess: false, moveCards: false, createCards: false, deleteCards: false },
+    comercial: { view: false, edit: false },
+    financeiro: { view: false, edit: false },
+    relatorios: { view: true },
+    trafego: { view: false },
+    configuracoes: { view: true, edit: false },
+    usuarios: { view: true, create: true, edit: true, delete: false, editPermissions: false }
+  },
+  'Desenvolvedor': {
+    dashboard: { view: true, edit: true },
+    clientes: { view: true, create: true, edit: true, delete: true },
+    demandas: { view: true, create: true, edit: true, complete: true, delete: true },
+    processos: { view: true, createProcess: true, editProcess: true, moveCards: true, createCards: true, deleteCards: true },
+    comercial: { view: true, createSale: true, editSale: true, deleteSale: true, editGoals: true },
+    financeiro: { view: true, edit: true },
+    relatorios: { view: true },
+    trafego: { view: true },
+    configuracoes: { view: true, edit: true },
+    usuarios: { view: true, create: true, edit: true, delete: true, editPermissions: true }
+  }
+};
