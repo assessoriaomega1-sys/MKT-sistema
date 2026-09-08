@@ -226,13 +226,27 @@ export function CompanySetupModal({ isOpen, onClose, isFirstSetup = false }: Com
                   <Key size={13} />
                   Código de Acesso da Equipe (Criado pelo Dono)
                 </label>
-                <button
-                  type="button"
-                  onClick={handleCopyCode}
-                  className="text-[11px] text-accent-mint hover:underline flex items-center gap-1 cursor-pointer font-semibold"
-                >
-                  <Copy size={11} /> Copiar Código
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyCode}
+                    className="text-[11px] text-accent-mint hover:underline flex items-center gap-1 cursor-pointer font-semibold"
+                  >
+                    <Copy size={11} /> Código
+                  </button>
+                  <span className="text-white/20">•</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const inviteUrl = `${window.location.origin}/login?codigo=${accessCode.trim()}`;
+                      navigator.clipboard.writeText(inviteUrl);
+                      toast.success('Link de convite copiado! Seus colaboradores entrarão direto na sua empresa.');
+                    }}
+                    className="text-[11px] text-accent-mint hover:underline flex items-center gap-1 cursor-pointer font-semibold"
+                  >
+                    <Copy size={11} /> Copiar Link de Convite
+                  </button>
+                </div>
               </div>
               <input
                 type="text"
@@ -242,7 +256,7 @@ export function CompanySetupModal({ isOpen, onClose, isFirstSetup = false }: Com
                 className="w-full px-4 py-2.5 bg-black/40 border border-accent-mint/30 rounded-xl text-accent-mint font-mono font-bold tracking-widest text-sm focus:outline-none focus:border-accent-mint transition-colors"
               />
               <p className="text-[11px] text-text-muted leading-relaxed">
-                Compartilhe este código com seus colaboradores. Eles usarão este código na tela de login para se vincular diretamente à sua empresa.
+                Compartilhe o código ou o link de convite com seus colaboradores. Eles entrarão diretamente vinculados ao espaço exclusivo da sua empresa.
               </p>
             </div>
 

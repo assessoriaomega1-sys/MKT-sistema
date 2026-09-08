@@ -28,6 +28,7 @@ import { storage } from '../lib/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import { CommandPalette } from './CommandPalette';
 import { CompanySetupModal } from './CompanySetupModal';
+import { ThemeSelector } from './ThemeSelector';
 import { useAuth } from '../contexts/AuthContext';
 import { useVisibility } from '../contexts/VisibilityContext';
 import { toast } from 'sonner';
@@ -112,28 +113,41 @@ export function Layout() {
           </button>
         </div>
 
-        <nav className="flex-1 px-4 py-3 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-3 py-3 space-y-1.5 overflow-y-auto">
           {allowedNavItems.map((item) => {
             const isActive = location.pathname === item.path || (item.path === '/clientes' && location.pathname.startsWith('/clientes'));
+            const itemId = `nav-link-${item.path.replace('/', '')}`;
             return (
               <Link
                 key={item.path}
+                id={itemId}
                 to={item.path}
                 className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all group relative overflow-hidden",
+                  "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold tracking-wide transition-all group relative overflow-hidden select-none",
                   isActive 
-                    ? "bg-white/[0.08] text-white" 
-                    : "text-text-secondary hover:bg-white/[0.04] hover:text-white"
+                    ? "bg-accent-mint/10 text-white border border-accent-mint/25 shadow-sm shadow-accent-mint/10" 
+                    : "text-text-secondary hover:bg-white/[0.04] hover:text-white border border-transparent"
                 )}
               >
                 {isActive && (
                   <motion.div 
-                    layoutId="sidebar-active"
-                    className="absolute left-0 top-1/4 bottom-1/4 w-1 bg-accent-mint rounded-r-full"
+                    layoutId="sidebar-active-indicator"
+                    className="absolute left-0 top-2 bottom-2 w-1 bg-accent-mint rounded-r-full shadow-[0_0_8px_rgba(4,221,114,0.6)]"
                   />
                 )}
-                <item.icon size={18} className={cn(isActive ? "text-accent-mint" : "text-text-muted group-hover:text-text-secondary")} />
-                {item.label}
+                <item.icon 
+                  size={17} 
+                  className={cn(
+                    "transition-transform duration-200 group-hover:scale-110 shrink-0",
+                    isActive ? "text-accent-mint" : "text-text-muted group-hover:text-white"
+                  )} 
+                />
+                <span className="truncate flex-1">{item.label}</span>
+                {item.path === '/trafego' && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-accent-mint/15 text-accent-mint border border-accent-mint/20 font-mono uppercase tracking-wider">
+                    Labs
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -213,6 +227,9 @@ export function Layout() {
             >
               {isVisible ? <Eye size={20} /> : <EyeOff size={20} />}
             </button>
+
+            {/* Seletor de Tema e Cor no Topo para Qualquer Usuário */}
+            <ThemeSelector />
 
             <div className="w-px h-8 bg-border-subtle mx-1" />
 

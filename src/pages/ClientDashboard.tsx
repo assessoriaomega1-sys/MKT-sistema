@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -7,7 +7,7 @@ import {
   TrendingUp, TrendingDown, Clock, Plus, FileText, 
   BarChart3, Settings, Share2, Maximize2, Download,
   ArrowRight, Users, CreditCard, DollarSign, Target, PlusCircle, Trash2, Edit2, ChevronDown, CheckCircle2, AlertCircle, Info, Minimize2, ExternalLink, Camera, CalendarDays, Play, X, MessageSquare, Key, Lock, Copy, Eye, EyeOff,
-  Layers, CheckSquare, User
+  Layers, CheckSquare, User, Sparkles, Video, Star, BookOpen
 } from 'lucide-react';
 import { useEntries } from '../hooks/useMetrics';
 import { storage } from '../lib/storage';
@@ -179,7 +179,21 @@ export function ClientDashboard() {
   const { id } = useParams<{ id: string }>();
   const { isVisible } = useVisibility();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview' | 'calendar' | 'entries' | 'report' | 'settings' | 'processos'>('overview');
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<'overview' | 'calendar' | 'entries' | 'report' | 'settings' | 'processos'>(
+    (tabParam && ['overview', 'calendar', 'entries', 'report', 'settings', 'processos'].includes(tabParam)) 
+      ? (tabParam as any) 
+      : 'overview'
+  );
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && ['overview', 'calendar', 'entries', 'report', 'settings', 'processos'].includes(tab)) {
+      setActiveTab(tab as any);
+    }
+  }, [searchParams]);
+
   const [isPresenting, setIsPresenting] = useState(false);
   const [viewMode, setViewMode] = useState<'all' | 'monthly'>('all');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -213,7 +227,7 @@ export function ClientDashboard() {
 
       // Listen to creatives and filter by client
       const unsubCreatives = storage.listenToCreatives((list) => {
-        const filtered = list.filter(c => c.clientId === id);
+        const filtered = list.filter(c => c.clientId === id && c.syncWithClientCalendar !== false);
         setClientCreatives(filtered);
       });
 
@@ -925,6 +939,7 @@ export function ClientDashboard() {
               setClient={setClient} 
               currentDate={currentDate} 
               setCurrentDate={setCurrentDate} 
+              clientCreatives={clientCreatives}
             />
           </motion.div>
         )}
@@ -2067,16 +2082,22 @@ function DashboardCalendar({
   client, 
   setClient, 
   currentDate, 
-  setCurrentDate 
+  setCurrentDate,
+  clientCreatives = []
 }: { 
   client: any, 
   setClient: any, 
   currentDate: Date, 
-  setCurrentDate: (d: Date) => void 
+  setCurrentDate: (d: Date) => void,
+  clientCreatives?: Creative[]
 }) {
+  const navigate = useNavigate();
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
+  const [eventType, setEventType] = useState<'content' | 'creative' | 'capture' | 'meeting'>('content');
+  const [linkExistingCreativeId, setLinkExistingCreativeId] = useState<string>('new');
+  const [selectedCreativeForModal, setSelectedCreativeForModal] = useState<Creative | null>(null);
   const [selectedRecurringDays, setSelectedRecurringDays] = useState<number[]>([]);
   const [recurrenceType, setRecurrenceType] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY_DAY' | 'MONTHLY_ORDINAL' | 'NONE'>('NONE');
   const [ordinalSelection, setOrdinalSelection] = useState<{ ordinal: number, day: number }>({ ordinal: 1, day: 1 });
@@ -2189,11 +2210,36 @@ function DashboardCalendar({
         }
       });
     }
+
+    // Connect Creatives from the Banco de Inteligência de Criativos
+    if (clientCreatives && clientCreatives.length > 0) {
+      const dateStr = date.toISOString().split('T')[0];
+      clientCreatives.forEach((c) => {
+        if (c.syncWithClientCalendar !== false) {
+          const cDate = c.publishDate || c.creationDate;
+          if (cDate === dateStr) {
+            events.push({
+              type: 'creative',
+              id: c.id,
+              code: c.code,
+              title: c.title,
+              status: c.status,
+              date: cDate,
+              creative: c,
+              isCompleted: c.status === 'VALIDADO'
+            });
+          }
+        }
+      });
+    }
     
     return events;
   };
 
   const isEventDelayed = (event: any, date: Date) => {
+    if (event.type === 'creative') {
+      return event.creative?.isUrgent && event.status !== 'VALIDADO';
+    }
     const dateStr = date.toISOString().split('T')[0];
     const isCompleted = (event.isRecurring || event.recurringDays?.length > 0)
       ? event.completedDates?.includes(dateStr)
@@ -2214,11 +2260,20 @@ function DashboardCalendar({
   const handleDayClick = (date: Date) => {
     setSelectedDay(date);
     setSelectedEvent(null);
+    setEventType('content');
+    setLinkExistingCreativeId('new');
     setShowEventModal(true);
   };
 
   const handleEventClick = async (e: React.MouseEvent, event: any, date: Date) => {
     e.stopPropagation();
+
+    // Creative opens the rich inspection modal
+    if (event.type === 'creative') {
+      setSelectedCreativeForModal(event.creative);
+      return;
+    }
+
     const dateStr = date.toISOString().split('T')[0];
     const isRecurring = event.isRecurring || 
                        (event.recurringDays && event.recurringDays.length > 0) || 
@@ -2293,16 +2348,63 @@ function DashboardCalendar({
 
   const handleEventDoubleClick = (e: React.MouseEvent, event: any, date: Date) => {
     e.stopPropagation();
+    if (event.type === 'creative') {
+      setSelectedCreativeForModal(event.creative);
+      return;
+    }
     setSelectedEvent(event);
     setSelectedDay(date);
+    setEventType(event.type || 'content');
     setShowEventModal(true);
   };
 
   const handleSaveEvent = async (formData: FormData) => {
-    const type = formData.get('type') as string;
+    const type = (formData.get('type') as string) || eventType;
     const title = formData.get('title') as string;
     const notes = formData.get('notes') as string;
     const dateStr = selectedDay?.toISOString().split('T')[0] || '';
+
+    // Handle Creative Event
+    if (type === 'creative') {
+      if (linkExistingCreativeId && linkExistingCreativeId !== 'new') {
+        const existing = clientCreatives.find(c => c.id === linkExistingCreativeId);
+        if (existing) {
+          await storage.saveCreative({
+            ...existing,
+            publishDate: dateStr,
+            syncWithClientCalendar: true,
+            syncWithGeneralCalendar: true
+          });
+          toast.success(`Criativo [${existing.code}] agendado para ${dateStr}!`);
+          setShowEventModal(false);
+          return;
+        }
+      } else {
+        const nextNum = clientCreatives.length + 1;
+        const creativeCode = `AD${String(nextNum).padStart(3, '0')}`;
+        const newCreative: Creative = {
+          id: 'cr_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+          code: creativeCode,
+          title: title || 'Novo Criativo de Tráfego',
+          status: 'IDEIA',
+          type: 'Gancho de Dor',
+          objective: 'Captação',
+          creationDate: new Date().toISOString().split('T')[0],
+          publishDate: dateStr,
+          rating: 3,
+          script: notes || undefined,
+          observations: notes || undefined,
+          clientId: client.id,
+          clientName: client.name,
+          syncWithClientCalendar: true,
+          syncWithGeneralCalendar: true
+        };
+        await storage.saveCreative(newCreative);
+        toast.success(`Criativo [${creativeCode}] criado e conectado ao calendário!`);
+        setShowEventModal(false);
+        return;
+      }
+    }
     
     let updatedClient = { ...client };
     const eventData = {
@@ -2355,6 +2457,18 @@ function DashboardCalendar({
   };
 
   const handleDeleteEventFromGrid = async (event: any, date: Date) => {
+    if (event.type === 'creative') {
+      if (!window.confirm(`Deseja desvincular o criativo [${event.code}] desta data do calendário?`)) return;
+      if (event.creative) {
+        await storage.saveCreative({
+          ...event.creative,
+          publishDate: undefined
+        });
+        toast.success("Criativo desvinculado do calendário com sucesso!");
+      }
+      return;
+    }
+
     const isRecurring = event.recurrenceType 
                        ? event.recurrenceType !== 'NONE'
                        : (event.isRecurring || (event.recurringDays && event.recurringDays.length > 0) || (event.type === 'content' && client.billingModel === 'RECURRING'));
@@ -2415,6 +2529,18 @@ function DashboardCalendar({
 
   const handleDeleteEvent = async (onlyThisOccurrence: boolean = false) => {
     if (!selectedEvent) return;
+
+    if (selectedEvent.type === 'creative') {
+      if (selectedEvent.creative) {
+        await storage.saveCreative({
+          ...selectedEvent.creative,
+          publishDate: undefined
+        });
+        toast.success("Criativo desvinculado do calendário com sucesso!");
+      }
+      setShowEventModal(false);
+      return;
+    }
     
     const isRecurring = selectedEvent.recurrenceType 
                        ? selectedEvent.recurrenceType !== 'NONE'
@@ -2477,7 +2603,8 @@ function DashboardCalendar({
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-4 mr-4 text-[10px] font-bold uppercase tracking-widest text-text-muted">
-             <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: client.brandColor }} /> Postagem</div>
+             <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full" style={{ backgroundColor: client.brandColor || '#00D9A3' }} /> Postagem</div>
+             <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-accent-mint animate-pulse" /> Criativo (Laboratório)</div>
              <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-fuchsia-400" /> Captação</div>
              <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-400" /> Reunião</div>
           </div>
@@ -2539,6 +2666,55 @@ function DashboardCalendar({
                 {events.map((event: any) => {
                   const delayed = isEventDelayed(event, dateObj.date);
                   const dateStr = dateObj.date.toISOString().split('T')[0];
+
+                  // Special rendering for Creatives from the Banco de Inteligência
+                  if (event.type === 'creative') {
+                    const isVal = event.status === 'VALIDADO';
+                    const isUrg = event.creative?.isUrgent;
+                    return (
+                      <div
+                        key={`cr-${event.id}-${dateStr}`}
+                        className={cn(
+                          "w-full text-[8px] font-bold p-1 rounded-md border flex items-center gap-1 justify-between transition-all group/event relative pr-4",
+                          isVal
+                            ? "bg-accent-mint/20 border-accent-mint/40 text-accent-mint shadow-[0_0_8px_rgba(0,217,163,0.15)]"
+                            : (isUrg 
+                                ? "bg-accent-coral/20 border-accent-coral/40 text-accent-coral animate-pulse" 
+                                : "bg-accent-mint/10 border-accent-mint/20 text-accent-mint/90 hover:border-accent-mint/40"
+                              )
+                        )}
+                        title={`Criativo [${event.code}]: ${event.title}`}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => handleEventClick(e, event, dateObj.date)}
+                          className="flex-1 min-w-0 flex items-center gap-1 text-left cursor-pointer"
+                        >
+                          <Sparkles size={9} className="shrink-0 text-accent-mint" />
+                          <span className="font-mono text-[7px] font-extrabold opacity-90 shrink-0">[{event.code}]</span>
+                          <span className="flex-1 truncate">{event.title}</span>
+                          <span className={cn(
+                            "text-[7px] px-1 py-0.2 rounded uppercase font-bold shrink-0",
+                            isVal ? "bg-accent-mint/30 text-accent-mint" : "bg-white/10 text-white/70"
+                          )}>
+                            {isVal ? 'Validado' : (event.status === 'TESTE_CAMPANHA' ? 'Teste' : 'Criativo')}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteEventFromGrid(event, dateObj.date);
+                          }}
+                          className="absolute right-0.5 top-1/2 -translate-y-1/2 opacity-30 group-hover/event:opacity-100 hover:opacity-100 hover:text-accent-coral p-0.5 rounded transition-all shrink-0 cursor-pointer"
+                          title="Desvincular Criativo da Data"
+                        >
+                          <Trash2 size={9} />
+                        </button>
+                      </div>
+                    );
+                  }
+
                   const isCompleted = (event.isRecurring || event.recurringDays?.length > 0)
                     ? event.completedDates?.includes(dateStr)
                     : (event.status === 'POSTED' || event.status === 'DONE');
@@ -2623,50 +2799,88 @@ function DashboardCalendar({
                 }} className="space-y-6">
                    <div>
                       <label className="block text-xs font-bold uppercase tracking-widest text-text-muted mb-3">Tipo de Evento</label>
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                          {[
                            { id: 'content', label: 'Post/Vídeo', icon: Play, color: 'text-accent-mint' },
+                           { id: 'creative', label: 'Criativo (Banco)', icon: Sparkles, color: 'text-accent-mint' },
                            { id: 'capture', label: 'Captação', icon: Camera, color: 'text-fuchsia-400' },
                            { id: 'meeting', label: 'Reunião', icon: MessageSquare, color: 'text-blue-400' }
                          ].map(t => (
-                           <label key={t.id} className={cn(
-                             "relative flex flex-col items-center gap-3 p-4 rounded-2xl border transition-all cursor-pointer group",
-                             (selectedEvent?.type || 'content') === t.id ? "bg-white/10 border-white/20" : "bg-white/5 border-transparent opacity-50 hover:opacity-100"
-                           )}>
-                              <input type="radio" name="type" value={t.id} defaultChecked={(selectedEvent?.type || 'content') === t.id} className="absolute inset-0 opacity-0 cursor-pointer" />
-                              <t.icon size={20} className={t.color} />
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-center leading-tight">{t.label}</span>
-                           </label>
+                           <button
+                             type="button"
+                             key={t.id}
+                             onClick={() => setEventType(t.id as any)}
+                             className={cn(
+                               "relative flex flex-col items-center gap-2 p-3 rounded-2xl border transition-all cursor-pointer group text-center",
+                               eventType === t.id ? "bg-white/10 border-accent-mint/50 shadow-[0_0_15px_rgba(0,217,163,0.1)]" : "bg-white/5 border-transparent opacity-60 hover:opacity-100"
+                             )}
+                           >
+                              <t.icon size={18} className={t.color} />
+                              <span className="text-[10px] font-bold uppercase tracking-wider leading-tight">{t.label}</span>
+                           </button>
                          ))}
                       </div>
+                      <input type="hidden" name="type" value={eventType} />
                    </div>
 
-                   <div>
-                      <label className="block text-xs font-bold uppercase tracking-widest text-text-muted mb-2">Título do Evento</label>
-                      <input 
-                        name="title" 
-                        defaultValue={selectedEvent?.title}
-                        required
-                        placeholder="Ex: Vídeo de Reels, Captação na Sede..."
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-accent-mint/50 transition-all font-medium" 
-                      />
-                   </div>
+                   {/* If Creative Type, allow choosing an existing creative or new */}
+                   {eventType === 'creative' && (
+                     <div className="p-4 bg-accent-mint/5 border border-accent-mint/20 rounded-2xl space-y-3">
+                       <label className="block text-xs font-bold text-accent-mint uppercase tracking-wider">
+                         Vincular ao Banco de Inteligência de Criativos
+                       </label>
+                       <select
+                         value={linkExistingCreativeId}
+                         onChange={(e) => setLinkExistingCreativeId(e.target.value)}
+                         className="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-accent-mint"
+                       >
+                         <option value="new">+ Cadastrar Novo Criativo para esta data</option>
+                         {clientCreatives.map(c => (
+                           <option key={c.id} value={c.id}>
+                             [{c.code}] {c.title} ({c.status})
+                           </option>
+                         ))}
+                       </select>
+                       <p className="text-[10px] text-text-muted">
+                         O criativo ficará conectado ao Calendário do Cliente, Calendário Geral de Demandas e ao Laboratório de Tráfego.
+                       </p>
+                     </div>
+                   )}
+
+                   {/* Title Input */}
+                   {!(eventType === 'creative' && linkExistingCreativeId !== 'new') && (
+                     <div>
+                        <label className="block text-xs font-bold uppercase tracking-widest text-text-muted mb-2">
+                          {eventType === 'creative' ? 'Título do Criativo / Gancho' : 'Título do Evento'}
+                        </label>
+                        <input 
+                          name="title" 
+                          defaultValue={selectedEvent?.title}
+                          required={!(eventType === 'creative' && linkExistingCreativeId !== 'new')}
+                          placeholder={eventType === 'creative' ? "Ex: Gancho de Dor - Como faturar 3x mais..." : "Ex: Vídeo de Reels, Captação na Sede..."}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-accent-mint/50 transition-all font-medium text-sm" 
+                        />
+                     </div>
+                   )}
 
                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-widest text-text-muted mb-2">Informações Adicionais (Briefing/Pauta)</label>
+                      <label className="block text-xs font-bold uppercase tracking-widest text-text-muted mb-2">
+                        {eventType === 'creative' ? 'Roteiro ou Pauta do Criativo' : 'Informações Adicionais (Briefing/Pauta)'}
+                      </label>
                       <textarea 
                         name="notes" 
                         defaultValue={selectedEvent?.notes}
-                        rows={4}
-                        placeholder="Adicione detalhes importantes aqui..."
+                        rows={eventType === 'creative' ? 4 : 3}
+                        placeholder={eventType === 'creative' ? "Cole aqui a estrutura do roteiro (Gancho, Corpo, CTA)..." : "Adicione detalhes importantes aqui..."}
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-accent-mint/50 transition-all font-medium resize-none text-sm" 
                       />
                    </div>
 
-                   <div className="space-y-4">
-                      {/* Lembretes e Controles de Recorrência */}
-                      {selectedEvent && (selectedEvent.recurrenceType ? selectedEvent.recurrenceType !== 'NONE' : (selectedEvent.isRecurring || selectedEvent.recurringDays?.length > 0 || (selectedEvent.type === 'content' && client.billingModel === 'RECURRING'))) && (
-                        <div className="p-4 rounded-2xl border border-white/5 bg-white/[0.02] space-y-3">
+                   {eventType !== 'creative' && (
+                     <div className="space-y-4">
+                        {/* Lembretes e Controles de Recorrência */}
+                        {selectedEvent && (selectedEvent.recurrenceType ? selectedEvent.recurrenceType !== 'NONE' : (selectedEvent.isRecurring || selectedEvent.recurringDays?.length > 0 || (selectedEvent.type === 'content' && client.billingModel === 'RECURRING'))) && (
+                          <div className="p-4 rounded-2xl border border-white/5 bg-white/[0.02] space-y-3">
                           <div className="flex items-start gap-2.5">
                             <Clock size={16} className="text-accent-mint shrink-0 mt-0.5" />
                             <div>
@@ -2854,7 +3068,8 @@ function DashboardCalendar({
                            </div>
                         </div>
                       )}
-                   </div>
+                     </div>
+                   )}
 
                    <div className="flex gap-4 pt-4">
                       {selectedEvent && (
@@ -2881,11 +3096,171 @@ function DashboardCalendar({
                         type="submit" 
                         className="flex-[2] bg-accent-mint text-black font-bold px-8 py-4 rounded-xl hover:bg-accent-mint/90 transition-all shadow-lg shadow-accent-mint/10"
                       >
-                         {selectedEvent ? 'Salvar Alterações' : 'Agendar Evento'}
+                         {selectedEvent ? 'Salvar Alterações' : 'Agendar no Calendário'}
                       </button>
                    </div>
                 </form>
              </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* CREATIVE DETAIL INSPECTION MODAL */}
+      <AnimatePresence>
+        {selectedCreativeForModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedCreativeForModal(null)}
+              className="absolute inset-0 bg-black/85 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-2xl max-h-[90vh] glass border border-accent-mint/20 rounded-3xl p-6 sm:p-8 overflow-y-auto custom-scrollbar shadow-2xl space-y-6"
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-accent-mint/20 text-accent-mint font-mono font-bold text-xs px-2.5 py-1 rounded-lg border border-accent-mint/30">
+                      {selectedCreativeForModal.code}
+                    </span>
+                    <span className={cn(
+                      "text-[10px] font-bold uppercase px-2.5 py-1 rounded-lg",
+                      selectedCreativeForModal.status === 'VALIDADO' ? "bg-accent-mint text-black" : "bg-white/10 text-white"
+                    )}>
+                      {selectedCreativeForModal.status}
+                    </span>
+                    {selectedCreativeForModal.isUrgent && (
+                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-accent-coral/20 text-accent-coral border border-accent-coral/30 animate-pulse">
+                        Urgente
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-xl font-bold text-white mt-1">
+                    {selectedCreativeForModal.title}
+                  </h3>
+                  <p className="text-xs text-text-muted">
+                    Conectado ao Banco de Inteligência de Criativos & Calendário
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setSelectedCreativeForModal(null)}
+                  className="p-2 hover:bg-white/10 rounded-xl text-text-muted hover:text-white transition-colors cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Quick Info Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-left">
+                <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                  <span className="text-[10px] uppercase font-bold text-text-muted block">Tipo</span>
+                  <span className="text-xs font-medium text-white">{selectedCreativeForModal.type}</span>
+                </div>
+                <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                  <span className="text-[10px] uppercase font-bold text-text-muted block">Objetivo</span>
+                  <span className="text-xs font-medium text-white">{selectedCreativeForModal.objective}</span>
+                </div>
+                <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                  <span className="text-[10px] uppercase font-bold text-text-muted block">Data Publicação</span>
+                  <span className="text-xs font-mono text-accent-mint font-bold">{selectedCreativeForModal.publishDate || 'Não definida'}</span>
+                </div>
+                <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                  <span className="text-[10px] uppercase font-bold text-text-muted block">Avaliação</span>
+                  <div className="flex gap-0.5 text-accent-amber mt-1">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Star key={i} size={10} fill={i < selectedCreativeForModal.rating ? "currentColor" : "none"} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Script / Roteiro */}
+              {selectedCreativeForModal.script && (
+                <div className="space-y-2 text-left">
+                  <label className="text-xs uppercase font-bold text-accent-mint tracking-wider flex items-center gap-1.5">
+                    <BookOpen size={14} /> Roteiro / Estrutura do Criativo
+                  </label>
+                  <div className="p-4 rounded-2xl bg-black/60 border border-white/10 text-xs font-mono text-white/90 whitespace-pre-wrap max-h-48 overflow-y-auto leading-relaxed">
+                    {selectedCreativeForModal.script}
+                  </div>
+                </div>
+              )}
+
+              {/* Video URL Link */}
+              {selectedCreativeForModal.videoUrl && (
+                <div className="space-y-2 text-left">
+                  <label className="text-xs uppercase font-bold text-text-muted tracking-wider flex items-center gap-1.5">
+                    <Video size={14} /> Mídia Gravada / Link de Vídeo
+                  </label>
+                  <div className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-2xl">
+                    <span className="text-xs font-mono text-accent-mint truncate flex-1">
+                      {selectedCreativeForModal.videoUrl}
+                    </span>
+                    <a
+                      href={selectedCreativeForModal.videoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-accent-mint text-black text-xs font-bold rounded-lg hover:bg-accent-mint/90 transition-all flex items-center gap-1 shrink-0"
+                    >
+                      <ExternalLink size={12} /> Abrir Vídeo
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Learnings or Validation */}
+              {selectedCreativeForModal.learnings && (
+                <div className="p-4 rounded-2xl bg-accent-mint/5 border border-accent-mint/20 text-left space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-accent-mint tracking-wider block">
+                    Aprendizados & Testes de Tráfego
+                  </span>
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    {selectedCreativeForModal.learnings}
+                  </p>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const isVal = selectedCreativeForModal.status === 'VALIDADO';
+                    const newStatus = isVal ? 'TESTE_CAMPANHA' : 'VALIDADO';
+                    const updated = {
+                      ...selectedCreativeForModal,
+                      status: newStatus as any,
+                      validationDate: newStatus === 'VALIDADO' ? new Date().toISOString().split('T')[0] : undefined
+                    };
+                    await storage.saveCreative(updated);
+                    setSelectedCreativeForModal(updated);
+                    toast.success(newStatus === 'VALIDADO' ? "Criativo marcado como VALIDADO!" : "Status alterado para Teste de Campanha");
+                  }}
+                  className="flex-1 py-3 px-4 bg-white/10 hover:bg-white/15 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <CheckCircle2 size={15} className="text-accent-mint" />
+                  {selectedCreativeForModal.status === 'VALIDADO' ? 'Remover Validação' : 'Validar Criativo'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCreativeForModal(null);
+                    navigate('/trafego');
+                  }}
+                  className="flex-1 py-3 px-4 bg-accent-mint text-black font-bold rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-accent-mint/90 transition-all cursor-pointer shadow-lg shadow-accent-mint/10"
+                >
+                  <Sparkles size={15} />
+                  Abrir no Laboratório de Tráfego
+                </button>
+              </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>

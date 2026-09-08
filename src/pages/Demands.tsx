@@ -30,7 +30,8 @@ import {
   FileText,
   GripVertical,
   Video,
-  Star
+  Star,
+  Sparkles
 } from 'lucide-react';
 import { cn, formatCurrency } from '../lib/utils';
 import { storage } from '../lib/storage';
@@ -85,7 +86,7 @@ interface DemandItem {
   title: string;
   date: string;
   time?: string;
-  type: 'CONTENT' | 'CAPTURE' | 'MEETING' | 'TASK' | 'DELIVERY';
+  type: 'CONTENT' | 'CAPTURE' | 'MEETING' | 'TASK' | 'DELIVERY' | 'CREATIVE';
   status: DemandStatus;
   priority: DemandPriority;
   responsible?: string;
@@ -418,8 +419,38 @@ export function Demands() {
       });
     });
 
+    // Injetar Criativos do Banco de Inteligência / Tráfego no Calendário Geral
+    creatives.forEach(creative => {
+      const dateStr = creative.publishDate || creative.creationDate || '';
+      if (!dateStr) return;
+      if (creative.syncWithGeneralCalendar === false) return;
+
+      const creativeDate = startOfDay(new Date(dateStr + "T12:00:00"));
+      if (creativeDate < rangeStart || creativeDate > rangeEnd) return;
+
+      const isRealMonth = creativeDate.getMonth() === realCurrentMonth && creativeDate.getFullYear() === realCurrentYear;
+      const isVal = creative.status === 'VALIDADO';
+      const isAtrasada = isRealMonth && !isVal && creative.isUrgent && isPast(creativeDate) && !isToday(creativeDate);
+      const creativeClient = clients.find(c => c.id === creative.clientId);
+
+      demands.push({
+        id: `cr-${creative.id}`,
+        clientId: creative.clientId || 'general',
+        clientName: creative.clientName || creativeClient?.name || 'Geral / Criativos',
+        clientColor: creativeClient?.brandColor || '#00D9A3',
+        title: `[${creative.code}] ${creative.title}`,
+        date: dateStr,
+        type: 'CREATIVE',
+        status: isVal ? 'CONCLUIDO' : (isAtrasada ? 'ATRASADO' : (creative.status === 'TESTE_CAMPANHA' ? 'EM_ANDAMENTO' : 'PENDENTE')),
+        priority: creative.isUrgent ? 'URGENTE' : (creative.rating >= 4 ? 'ALTA' : 'MEDIA'),
+        responsible: 'Tráfego / Mídia',
+        notes: creative.script || creative.observations,
+        originalItem: creative
+      });
+    });
+
     return demands;
-  }, [clients, currentDate, matchesRecurrence, kanbanTasks]);
+  }, [clients, currentDate, matchesRecurrence, kanbanTasks, creatives]);
 
   const filteredDemands = useMemo(() => {
     return allDemands.filter(d => {
@@ -529,6 +560,21 @@ export function Demands() {
   const handleUpdateStatus = async (demand: DemandItem, newStatus: DemandStatus) => {
     const toastId = toast.loading('Atualizando status...');
     try {
+      if (demand.type === 'CREATIVE') {
+        const originalCreative = demand.originalItem as Creative;
+        if (originalCreative) {
+          const isDone = newStatus === 'CONCLUIDO';
+          const updatedCreative: Creative = {
+            ...originalCreative,
+            status: isDone ? 'VALIDADO' : 'TESTE_CAMPANHA',
+            validationDate: isDone ? new Date().toISOString().split('T')[0] : undefined
+          };
+          await storage.saveCreative(updatedCreative);
+          toast.success(isDone ? `Criativo [${originalCreative.code}] validado com sucesso!` : `Status de [${originalCreative.code}] alterado para Teste!`, { id: toastId });
+          return;
+        }
+      }
+
       if (demand.type === 'TASK') {
         const originalTask = demand.originalItem;
         if (originalTask) {
@@ -598,11 +644,24 @@ export function Demands() {
   };
 
   const handleDeleteDemand = async (demand: DemandItem) => {
-    if (!window.confirm(`Tem certeza de que deseja excluir a demanda "${demand.title}"?`)) {
+    if (!window.confirm(`Tem certeza de que deseja remover a demanda "${demand.title}"?`)) {
       return;
     }
-    const toastId = toast.loading('Excluindo demanda...');
+    const toastId = toast.loading('Processando demanda...');
     try {
+      if (demand.type === 'CREATIVE') {
+        const originalCreative = demand.originalItem as Creative;
+        if (originalCreative) {
+          await storage.saveCreative({
+            ...originalCreative,
+            publishDate: undefined,
+            syncWithGeneralCalendar: false
+          });
+          toast.success(`Criativo [${originalCreative.code}] desvinculado do calendário geral!`, { id: toastId });
+          return;
+        }
+      }
+
       if (demand.type === 'TASK') {
         const originalTask = demand.originalItem;
         if (originalTask) {
@@ -1155,7 +1214,11 @@ function MonthCalendar({ currentDate, demands, onUpdateStatus, onDelete }: { cur
                     onClick={() => onUpdateStatus(demand, demand.status === 'CONCLUIDO' ? 'PENDENTE' : 'CONCLUIDO')}
                     className="flex-1 min-w-0 flex items-center gap-1.5 text-left"
                   >
-                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: demand.clientColor }} />
+                    {demand.type === 'CREATIVE' ? (
+                      <Sparkles size={10} className="text-accent-mint shrink-0" />
+                    ) : (
+                      <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: demand.clientColor }} />
+                    )}
                     <span className="truncate">{demand.title}</span>
                     {demand.status === 'CONCLUIDO' && <CheckCircle size={10} className="shrink-0 text-accent-mint" />}
                   </button>
@@ -1234,12 +1297,15 @@ function WeekCalendar({ currentDate, demands, onUpdateStatus, onDelete }: { curr
                   </p>
                   <div className="flex items-center justify-between">
                     <span className={cn(
-                      "text-[8px] font-bold px-1.5 py-0.5 rounded",
+                      "text-[8px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1",
+                      demand.type === 'CREATIVE' ? "bg-accent-mint/20 text-accent-mint border border-accent-mint/30" :
                       demand.type === 'CONTENT' ? "bg-accent-mint/10 text-accent-mint" :
                       demand.type === 'CAPTURE' ? "bg-fuchsia-400/10 text-fuchsia-400" :
+                      demand.type === 'TASK' ? "bg-purple-400/10 text-purple-400" :
                       "bg-accent-amber/10 text-accent-amber"
                     )}>
-                      {demand.type}
+                      {demand.type === 'CREATIVE' && <Sparkles size={8} className="shrink-0" />}
+                      {demand.type === 'CREATIVE' ? 'CRIATIVO' : demand.type}
                     </span>
                     {demand.status === 'CONCLUIDO' ? (
                       <CheckCircle2 size={12} className="text-accent-mint" />
@@ -1313,12 +1379,15 @@ function DayCalendar({ currentDate, demands, onUpdateStatus, onDelete }: { curre
                   <div className="flex items-center gap-3 mb-1">
                     <h4 className={cn("text-lg font-medium", demand.status === 'CONCLUIDO' && "line-through text-text-muted")}>{demand.title}</h4>
                     <span className={cn(
-                      "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest",
+                      "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest flex items-center gap-1",
+                      demand.type === 'CREATIVE' ? "bg-accent-mint/20 text-accent-mint border border-accent-mint/30" :
                       demand.type === 'CONTENT' ? "bg-accent-mint/10 text-accent-mint" :
                       demand.type === 'CAPTURE' ? "bg-fuchsia-400/10 text-fuchsia-400" :
+                      demand.type === 'TASK' ? "bg-purple-400/10 text-purple-400" :
                       "bg-accent-amber/10 text-accent-amber"
                     )}>
-                      {demand.type}
+                      {demand.type === 'CREATIVE' && <Sparkles size={10} className="shrink-0" />}
+                      {demand.type === 'CREATIVE' ? 'CRIATIVO' : demand.type}
                     </span>
                   </div>
                   <div className="flex items-center gap-4 text-xs text-text-secondary">

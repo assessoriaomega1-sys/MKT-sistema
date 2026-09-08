@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Globe, 
@@ -94,6 +95,8 @@ export function TrafficWorkspace() {
   const [formLearnings, setFormLearnings] = useState<string>('');
   const [formVideoUrl, setFormVideoUrl] = useState<string>('');
   const [formIsUrgent, setFormIsUrgent] = useState<boolean>(false);
+  const [formSyncWithClientCalendar, setFormSyncWithClientCalendar] = useState<boolean>(true);
+  const [formSyncWithGeneralCalendar, setFormSyncWithGeneralCalendar] = useState<boolean>(true);
   const [showUrgentOnly, setShowUrgentOnly] = useState<boolean>(false);
   const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
   const [clientFormSearchQuery, setClientFormSearchQuery] = useState('');
@@ -256,6 +259,8 @@ export function TrafficWorkspace() {
     setFormLearnings('');
     setFormVideoUrl('');
     setFormIsUrgent(false);
+    setFormSyncWithClientCalendar(true);
+    setFormSyncWithGeneralCalendar(true);
     setFormClientId(activeClientId === 'ALL' ? '' : activeClientId);
     setSelectedCreative(null);
     setIsFormOpen(true);
@@ -280,6 +285,8 @@ export function TrafficWorkspace() {
     setFormLearnings(creative.learnings || '');
     setFormVideoUrl(creative.videoUrl || '');
     setFormIsUrgent(creative.isUrgent || false);
+    setFormSyncWithClientCalendar(creative.syncWithClientCalendar !== false);
+    setFormSyncWithGeneralCalendar(creative.syncWithGeneralCalendar !== false);
     setFormClientId(creative.clientId || '');
     setSelectedCreative(creative);
     setIsFormOpen(true);
@@ -311,6 +318,8 @@ export function TrafficWorkspace() {
       learnings: formLearnings.trim() || undefined,
       videoUrl: formVideoUrl.trim() || undefined,
       isUrgent: formIsUrgent,
+      syncWithClientCalendar: formSyncWithClientCalendar,
+      syncWithGeneralCalendar: formSyncWithGeneralCalendar,
       clientId: formClientId || undefined,
       clientName: selectedClient ? selectedClient.name : undefined,
     };
@@ -777,8 +786,20 @@ export function TrafficWorkspace() {
                         </div>
                         <div className="flex flex-wrap items-center gap-1 mt-1">
                           {c.clientName && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 border border-white/5 text-[9px] text-text-muted font-mono">
-                              {c.clientName}
+                            <span 
+                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                                c.syncWithClientCalendar !== false 
+                                  ? 'bg-accent-mint/10 border border-accent-mint/25 text-accent-mint' 
+                                  : 'bg-white/5 border border-white/5 text-text-muted font-mono'
+                              }`} 
+                              title={c.syncWithClientCalendar !== false ? "Conectado ao Calendário do Cliente" : "Cliente"}
+                            >
+                              {c.syncWithClientCalendar !== false ? '📅' : ''} {c.clientName}
+                            </span>
+                          )}
+                          {c.syncWithGeneralCalendar !== false && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 text-[9px] text-blue-400 font-semibold" title="Conectado à Agenda Geral de Demandas">
+                              🗓️ Geral
                             </span>
                           )}
                           {c.script && (
@@ -1003,6 +1024,57 @@ export function TrafficWorkspace() {
                     <p className={`font-mono mt-1 ${selectedCreative.status === 'VALIDADO' ? 'text-accent-mint font-bold' : 'text-white'}`}>
                       {formatDateString(selectedCreative.validationDate) || 'Sem validação'}
                     </p>
+                  </div>
+                </div>
+
+                {/* Conexão com Calendários e Agendas */}
+                <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs uppercase tracking-widest font-bold text-text-secondary flex items-center gap-1.5">
+                      <Sparkles size={12} className="text-accent-mint" />
+                      Conexões de Agenda & Calendário
+                    </h4>
+                    <span className="text-[10px] text-accent-mint font-semibold">Sincronizado</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {selectedCreative.clientId && selectedCreative.syncWithClientCalendar !== false ? (
+                      <Link
+                        to={`/clientes/${selectedCreative.clientId}?tab=calendar`}
+                        className="flex items-center justify-between p-2.5 rounded-xl bg-accent-mint/10 border border-accent-mint/20 hover:bg-accent-mint/20 text-accent-mint text-xs font-semibold transition-all group"
+                      >
+                        <span className="flex items-center gap-2 truncate">
+                          <Calendar size={13} className="shrink-0" />
+                          <span className="truncate">Calendário do Cliente</span>
+                        </span>
+                        <ChevronRight size={13} className="shrink-0 group-hover:translate-x-0.5 transition-transform" />
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-white/5 border border-white/5 text-text-muted text-xs">
+                        <Calendar size={13} className="opacity-40 shrink-0" />
+                        <span className="truncate">
+                          {selectedCreative.clientId ? 'Desativado no Calendário' : 'Sem cliente associado'}
+                        </span>
+                      </div>
+                    )}
+
+                    {selectedCreative.syncWithGeneralCalendar !== false ? (
+                      <Link
+                        to="/demandas"
+                        className="flex items-center justify-between p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 hover:bg-blue-500/20 text-blue-400 text-xs font-semibold transition-all group"
+                      >
+                        <span className="flex items-center gap-2 truncate">
+                          <Calendar size={13} className="shrink-0" />
+                          <span className="truncate">Calendário Geral</span>
+                        </span>
+                        <ChevronRight size={13} className="shrink-0 group-hover:translate-x-0.5 transition-transform" />
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-2 p-2.5 rounded-xl bg-white/5 border border-white/5 text-text-muted text-xs">
+                        <Calendar size={13} className="opacity-40 shrink-0" />
+                        <span className="truncate">Desconectado da Agenda Geral</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1517,6 +1589,77 @@ export function TrafficWorkspace() {
                       onChange={(e) => setFormObservations(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 hover:border-white/20 focus:border-accent-mint/50 rounded-xl px-4 py-3 text-xs text-white outline-none transition-all placeholder:text-text-muted"
                     />
+                  </div>
+
+                  {/* Sincronização Inteligente com Calendários */}
+                  <div className="space-y-3 md:col-span-2 pt-3 border-t border-white/10">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-accent-mint uppercase tracking-wider flex items-center gap-1.5">
+                        <Sparkles size={13} />
+                        Conexões & Sincronização Automática
+                      </label>
+                      <span className="text-[10px] text-text-muted font-medium">Integração com Agendas</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {/* Sincronizar com Calendário do Cliente */}
+                      <div 
+                        onClick={() => setFormSyncWithClientCalendar(!formSyncWithClientCalendar)}
+                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer select-none flex items-start gap-3 ${
+                          formSyncWithClientCalendar 
+                            ? 'bg-accent-mint/10 border-accent-mint/40 text-white shadow-lg shadow-accent-mint/5' 
+                            : 'bg-white/[0.02] border-white/10 text-text-muted hover:border-white/20'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formSyncWithClientCalendar}
+                          onChange={(e) => setFormSyncWithClientCalendar(e.target.checked)}
+                          className="mt-0.5 rounded accent-accent-mint cursor-pointer shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <span>📅 Calendário do Cliente</span>
+                            {formSyncWithClientCalendar && (
+                              <span className="text-[9px] bg-accent-mint/20 text-accent-mint px-1.5 py-0.2 rounded font-mono font-bold">ATIVO</span>
+                            )}
+                          </p>
+                          <p className="text-[11px] text-text-muted leading-relaxed">
+                            Exibe automaticamente este criativo na aba de <strong>Calendário de Conteúdo</strong> do cliente selecionado.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Sincronizar com Calendário Geral (Demandas) */}
+                      <div 
+                        onClick={() => setFormSyncWithGeneralCalendar(!formSyncWithGeneralCalendar)}
+                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer select-none flex items-start gap-3 ${
+                          formSyncWithGeneralCalendar 
+                            ? 'bg-blue-500/10 border-blue-500/40 text-white shadow-lg shadow-blue-500/5' 
+                            : 'bg-white/[0.02] border-white/10 text-text-muted hover:border-white/20'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={formSyncWithGeneralCalendar}
+                          onChange={(e) => setFormSyncWithGeneralCalendar(e.target.checked)}
+                          className="mt-0.5 rounded accent-blue-400 cursor-pointer shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <span>🗓️ Calendário Geral (Demandas)</span>
+                            {formSyncWithGeneralCalendar && (
+                              <span className="text-[9px] bg-blue-500/20 text-blue-400 px-1.5 py-0.2 rounded font-mono font-bold">ATIVO</span>
+                            )}
+                          </p>
+                          <p className="text-[11px] text-text-muted leading-relaxed">
+                            Conecta e exibe este criativo na <strong>Agenda Geral de Demandas</strong> de toda a empresa.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

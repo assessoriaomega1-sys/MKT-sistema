@@ -5,6 +5,7 @@ import { storage } from '../lib/storage';
 import { UserSettings } from '../types';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 
 const BUSINESS_SECTORS = [
   'E-commerce & Varejo',
@@ -23,6 +24,7 @@ export function Settings() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const { user, profile, updateCompanySettings, updateCompanyAccessCode, isAdmin } = useAuth();
+  const { theme, setTheme, accentColorId, setAccentColor, presets } = useTheme();
   
   // Access code management state
   const [isEditingCode, setIsEditingCode] = useState(false);
@@ -75,15 +77,17 @@ export function Settings() {
     toast.success('Configurações da empresa salvas com sucesso!');
   };
 
-  const handleThemeChange = async (theme: 'light' | 'dark') => {
-    if (!settings) return;
-    const newSettings: UserSettings = {
-      ...settings,
-      theme
-    };
-    setSettings(newSettings);
-    await storage.saveSettings(newSettings);
-    toast.success(`Tema alterado para ${theme === 'dark' ? 'Escuro' : 'Claro'}!`);
+  const handleThemeChange = async (newTheme: 'light' | 'dark') => {
+    setTheme(newTheme);
+    if (settings) {
+      const newSettings: UserSettings = {
+        ...settings,
+        theme: newTheme
+      };
+      setSettings(newSettings);
+      await storage.saveSettings(newSettings);
+    }
+    toast.success(`Tema alterado para ${newTheme === 'dark' ? 'Escuro' : 'Claro'}!`);
   };
 
   if (loading || !settings) return null;
@@ -370,29 +374,89 @@ export function Settings() {
              </form>
           </div>
 
-          <div className="glass rounded-3xl p-8 border border-white/5">
-             <h4 className="font-medium mb-4 text-white">Mudar Tema</h4>
-             <div className="flex items-center gap-4">
-                <div 
-                  onClick={() => handleThemeChange('dark')}
-                  className={`flex-1 p-4 rounded-2xl cursor-pointer border-2 transition-all ${
-                    settings.theme !== 'light'
-                      ? "border-accent-mint bg-white/10 opacity-100" 
-                      : "border-transparent bg-white/5 hover:border-white/10 opacity-60"
-                  }`}
-                >
-                   <p className="text-sm font-medium text-center text-white">Dark Mode (Padrão)</p>
-                </div>
-                <div 
-                  onClick={() => handleThemeChange('light')}
-                  className={`flex-1 p-4 rounded-2xl cursor-pointer border-2 transition-all ${
-                    settings.theme === 'light'
-                      ? "border-accent-mint bg-white/10 opacity-100" 
-                      : "border-transparent bg-white/5 hover:border-white/10 opacity-60"
-                  }`}
-                >
-                   <p className="text-sm font-medium text-center text-white">Light Mode</p>
-                </div>
+          <div className="glass rounded-3xl p-8 border border-white/5 space-y-6">
+             <div className="flex items-center justify-between">
+               <div>
+                 <h4 className="font-bold text-white text-base flex items-center gap-2">
+                   <Palette size={18} className="text-accent-mint" />
+                   Aparência & Cores do Sistema
+                 </h4>
+                 <p className="text-xs text-text-muted mt-0.5">
+                   Escolha seu tema preferido e cor de destaque (também acessível a qualquer momento no topo da tela).
+                 </p>
+               </div>
+             </div>
+
+             {/* Dark vs Light */}
+             <div className="space-y-2">
+               <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">
+                 Modo de Exibição
+               </label>
+               <div className="grid grid-cols-2 gap-4">
+                  <div 
+                    onClick={() => handleThemeChange('dark')}
+                    className={`p-4 rounded-2xl cursor-pointer border-2 transition-all flex items-center justify-center gap-3 ${
+                      theme !== 'light'
+                        ? "border-accent-mint bg-white/10 opacity-100 shadow-md shadow-accent-mint/10" 
+                        : "border-transparent bg-white/5 hover:border-white/10 opacity-60"
+                    }`}
+                  >
+                     <div className="w-4 h-4 rounded-full bg-zinc-950 border border-white/20" />
+                     <p className="text-sm font-semibold text-center text-white">Dark Mode (Escuro)</p>
+                  </div>
+                  <div 
+                    onClick={() => handleThemeChange('light')}
+                    className={`p-4 rounded-2xl cursor-pointer border-2 transition-all flex items-center justify-center gap-3 ${
+                      theme === 'light'
+                        ? "border-accent-mint bg-white/10 opacity-100 shadow-md shadow-accent-mint/10" 
+                        : "border-transparent bg-white/5 hover:border-white/10 opacity-60"
+                    }`}
+                  >
+                     <div className="w-4 h-4 rounded-full bg-slate-100 border border-slate-300" />
+                     <p className="text-sm font-semibold text-center text-white">Light Mode (Claro)</p>
+                  </div>
+               </div>
+             </div>
+
+             {/* Accent Colors */}
+             <div className="space-y-2 pt-2 border-t border-white/10">
+               <div className="flex items-center justify-between">
+                 <label className="text-[10px] font-bold text-text-muted uppercase tracking-widest">
+                   Paleta de Cor de Destaque
+                 </label>
+                 <span className="text-[10px] text-accent-mint font-semibold">
+                   {presets.find(p => p.id === accentColorId)?.name || 'Padrão'}
+                 </span>
+               </div>
+               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                 {presets.map(preset => {
+                   const isSelected = preset.id === accentColorId;
+                   const colorHex = theme === 'light' ? preset.hexLight : preset.hexDark;
+                   return (
+                     <button
+                       key={preset.id}
+                       type="button"
+                       onClick={() => {
+                         setAccentColor(preset.id);
+                         toast.success(`Cor alterada para ${preset.name}!`);
+                       }}
+                       className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-xs font-medium text-left transition-all cursor-pointer ${
+                         isSelected
+                           ? 'bg-white/15 border-white/40 text-white font-bold shadow-sm'
+                           : 'bg-white/5 border-white/5 text-text-secondary hover:text-white hover:bg-white/10'
+                       }`}
+                     >
+                       <span
+                         className="w-4 h-4 rounded-full shrink-0 flex items-center justify-center shadow-inner"
+                         style={{ backgroundColor: colorHex }}
+                       >
+                         {isSelected && <Check size={10} className="text-black stroke-[3]" />}
+                       </span>
+                       <span className="truncate">{preset.name}</span>
+                     </button>
+                   );
+                 })}
+               </div>
              </div>
           </div>
         </div>

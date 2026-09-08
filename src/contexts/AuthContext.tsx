@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               userProfile.team = 'Diretoria';
             }
             if (!userProfile.companyAccessCode) {
-              const genCode = `EMP-${currUser.uid.slice(0, 4).toUpperCase()}`;
+              const genCode = `EMP-${Math.floor(1000 + Math.random() * 9000)}`;
               updates.companyAccessCode = genCode;
               userProfile.companyAccessCode = genCode;
             }
@@ -65,7 +65,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             try {
               await storage.saveCompany({
                 id: currUser.uid,
-                companyName: userProfile.agencyName || 'MKT',
+                companyName: userProfile.agencyName || currUser.displayName || 'Minha Empresa',
                 ownerUid: currUser.uid,
                 ownerEmail: currUser.email || '',
                 accessCode: userProfile.companyAccessCode || updates.companyAccessCode,
@@ -76,8 +76,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
           if (!userProfile.agencyName) {
-            updates.agencyName = 'MKT';
-            userProfile.agencyName = 'MKT';
+            const fallbackName = currUser.displayName ? `${currUser.displayName.trim()}` : 'Minha Empresa';
+            updates.agencyName = fallbackName;
+            userProfile.agencyName = fallbackName;
           }
           await setDoc(userRef, updates, { merge: true });
         } else {
@@ -99,7 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               userProfile.roleName = 'Administrador';
               userProfile.team = 'Diretoria';
               if (!userProfile.companyAccessCode) {
-                userProfile.companyAccessCode = `EMP-${currUser.uid.slice(0, 4).toUpperCase()}`;
+                userProfile.companyAccessCode = `EMP-${Math.floor(1000 + Math.random() * 9000)}`;
               }
             }
 
@@ -113,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               try {
                 await storage.saveCompany({
                   id: currUser.uid,
-                  companyName: userProfile.agencyName || 'MKT',
+                  companyName: userProfile.agencyName || currUser.displayName || 'Minha Empresa',
                   ownerUid: currUser.uid,
                   ownerEmail: currUser.email || '',
                   accessCode: userProfile.companyAccessCode,
@@ -124,16 +125,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               }
             }
           } else {
-            // Brand new business owner or entrepreneur logging in!
+            // Brand new business owner or entrepreneur logging in - AUTOMATIC WORKSPACE CREATION!
             const names = currUser.displayName ? currUser.displayName.split(' ') : ['Empresário', ''];
-            const defaultCode = `EMP-${currUser.uid.slice(0, 4).toUpperCase()}`;
+            const defaultCode = `EMP-${Math.floor(1000 + Math.random() * 9000)}`;
+            const autoCompanyName = currUser.displayName ? `${currUser.displayName.trim()}` : 'Minha Empresa';
             userProfile = {
               id: currUser.uid,
               managerName: currUser.displayName || 'Empresário',
-              agencyName: 'MKT',
+              agencyName: autoCompanyName,
               companyRole: 'Empresário / Dono',
               companyAccessCode: defaultCode,
-              companySetupCompleted: false,
+              companySetupCompleted: true,
               theme: 'light',
               firstName: names[0] || 'Empresário',
               lastName: names.slice(1).join(' ') || '',
@@ -150,7 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             try {
               await storage.saveCompany({
                 id: currUser.uid,
-                companyName: 'MKT',
+                companyName: autoCompanyName,
                 ownerUid: currUser.uid,
                 ownerEmail: currUser.email || '',
                 accessCode: defaultCode,
@@ -206,15 +208,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     return unsub;
   }, [profile]);
-
-  // Handle Light / Dark theme toggling dynamically
-  useEffect(() => {
-    if (profile?.theme === 'light') {
-      document.documentElement.classList.add('light');
-    } else {
-      document.documentElement.classList.remove('light');
-    }
-  }, [profile?.theme]);
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
@@ -293,7 +286,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // If still not found, sign out immediately to prevent unauthorized or orphan session
     if (!foundCompany) {
       await signOut(auth);
-      throw new Error(`Código de acesso "${cleanCode}" não foi encontrado. Confirme o código exato com o dono da empresa.`);
+      throw new Error(`Código de acesso "${cleanCode}" não foi encontrado. Solicite o código correto ou o link de convite ao dono da sua empresa.`);
     }
 
     const names = currUser.displayName ? currUser.displayName.split(' ') : ['Colaborador', ''];
@@ -306,7 +299,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       agencyName: foundCompany.companyName || companyName || 'Empresa',
       ownerId: foundCompany.ownerUid, // Belongs to company workspace!
       companyRole: 'Colaborador',
-      companyAccessCode: cleanCode,
+      companyAccessCode: foundCompany.accessCode || cleanCode,
       companySetupCompleted: true,
       theme: 'light',
       firstName: names[0] || 'Colaborador',

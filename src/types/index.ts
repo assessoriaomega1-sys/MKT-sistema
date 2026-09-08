@@ -308,6 +308,8 @@ export interface Creative {
   clientName?: string; // Nome do Cliente
   priorityOrder?: number; // Ordem de prioridade para drag-and-drop
   ownerId?: string;
+  syncWithClientCalendar?: boolean; // Sincronizar com calendário do cliente
+  syncWithGeneralCalendar?: boolean; // Sincronizar com calendário geral de demandas
 }
 
 export interface Processo {

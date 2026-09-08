@@ -23,6 +23,7 @@ import { Processes } from './pages/Processes';
 import { Users } from './pages/Users';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { VisibilityProvider } from './contexts/VisibilityContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -87,9 +88,10 @@ function ModuleRoute({ module, children }: { module: string; children: React.Rea
 
 export default function App() {
   return (
-    <AuthProvider>
-      <VisibilityProvider>
-        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <ThemeProvider>
+      <AuthProvider>
+        <VisibilityProvider>
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Toaster 
             theme="dark" 
             position="top-right" 
@@ -121,5 +123,6 @@ export default function App() {
         </BrowserRouter>
       </VisibilityProvider>
     </AuthProvider>
+    </ThemeProvider>
   );
 }

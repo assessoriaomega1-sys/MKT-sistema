@@ -1318,72 +1318,131 @@ export const firebaseStorage = {
 
   // COMPANIES & ACCESS CODES
   getCompanyByAccessCode: async (code: string): Promise<Company | null> => {
-    const cleanCode = code.trim().toUpperCase();
-    const rawCode = code.trim();
-    if (!cleanCode) return null;
-    try {
-      // 1. Search in companies collection (normalized uppercase)
-      let q = query(collection(db, COMPANIES_COL), where('accessCode', '==', cleanCode));
-      let snap = await getDocs(q);
-      if (!snap.empty) {
-        return { ...snap.docs[0].data(), id: snap.docs[0].id } as Company;
-      }
+    if (!code || !code.trim()) return null;
+    const rawTrimmed = code.trim();
+    const cleanUpper = rawTrimmed.toUpperCase();
+    const cleanNoDashes = cleanUpper.replace(/[\s\-_]/g, '');
 
-      // 1b. Search in companies collection (raw case if different)
-      if (rawCode !== cleanCode) {
-        q = query(collection(db, COMPANIES_COL), where('accessCode', '==', rawCode));
-        snap = await getDocs(q);
-        if (!snap.empty) {
-          return { ...snap.docs[0].data(), id: snap.docs[0].id } as Company;
+    // Set of candidate code variations
+    const candidates = new Set<string>();
+    candidates.add(rawTrimmed);
+    candidates.add(cleanUpper);
+    candidates.add(cleanNoDashes);
+    if (!cleanUpper.startsWith('EMP')) {
+      candidates.add(`EMP-${cleanUpper}`);
+      candidates.add(`EMP${cleanUpper}`);
+      candidates.add(`EMP-${cleanNoDashes}`);
+    }
+    if (cleanUpper.startsWith('EMP-')) {
+      candidates.add(cleanUpper.replace('EMP-', ''));
+    }
+    if (cleanUpper.startsWith('EMP')) {
+      const stripped = cleanUpper.replace(/^EMP[-_]?/, '');
+      if (stripped) {
+        candidates.add(stripped);
+        candidates.add(`EMP-${stripped}`);
+      }
+    }
+
+    try {
+      // 1. Direct candidate queries on companies collection
+      for (const cand of candidates) {
+        try {
+          const q = query(collection(db, COMPANIES_COL), where('accessCode', '==', cand));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            return { ...snap.docs[0].data(), id: snap.docs[0].id } as Company;
+          }
+        } catch (e) {
+          // ignore individual query failures
         }
       }
 
-      // 1c. Scan all companies in memory as fallback (handles any case/trimming mismatch)
+      // 1b. Search by ownerEmail in companies collection (in case user pasted owner's email)
+      if (rawTrimmed.includes('@')) {
+        try {
+          const qEmail = query(collection(db, COMPANIES_COL), where('ownerEmail', '==', rawTrimmed.toLowerCase()));
+          const snapEmail = await getDocs(qEmail);
+          if (!snapEmail.empty) {
+            return { ...snapEmail.docs[0].data(), id: snapEmail.docs[0].id } as Company;
+          }
+        } catch (e) {}
+      }
+
+      // 1c. Scan all companies in memory (case-insensitive & whitespace tolerant)
       try {
         const allCompaniesSnap = await getDocs(collection(db, COMPANIES_COL));
         for (const docSnap of allCompaniesSnap.docs) {
           const cData = docSnap.data() as Company;
-          if (cData.accessCode && cData.accessCode.trim().toUpperCase() === cleanCode) {
-            return { ...cData, id: docSnap.id };
+          const storedCode = (cData.accessCode || '').trim().toUpperCase();
+          const storedClean = storedCode.replace(/[\s\-_]/g, '');
+          const storedEmail = (cData.ownerEmail || '').trim().toLowerCase();
+          const storedName = (cData.companyName || '').trim().toLowerCase();
+
+          for (const cand of candidates) {
+            if (
+              storedCode === cand || 
+              storedClean === cand.replace(/[\s\-_]/g, '') ||
+              (cand.includes('@') && storedEmail === cand.toLowerCase()) ||
+              (cand.length >= 3 && storedName === cand.toLowerCase())
+            ) {
+              return { ...cData, id: docSnap.id };
+            }
           }
         }
       } catch (scanErr) {
         // Ignore if permission denied
       }
 
-      // 2. Fallback: Search in users collection where companyAccessCode matches (requires signed in auth)
+      // 2. Fallback: Search in users collection where companyAccessCode or email matches
       try {
-        const qUser = query(collection(db, USERS_COL), where('companyAccessCode', '==', cleanCode));
-        const snapUser = await getDocs(qUser);
-        if (!snapUser.empty) {
-          const u = snapUser.docs[0].data() as UserProfile;
-          return {
-            id: snapUser.docs[0].id,
-            companyName: u.agencyName || 'Empresa',
-            ownerUid: snapUser.docs[0].id,
-            ownerEmail: u.email,
-            accessCode: cleanCode,
-            createdAt: u.createdAt || new Date().toISOString()
-          };
+        for (const cand of candidates) {
+          try {
+            const qUser = query(collection(db, USERS_COL), where('companyAccessCode', '==', cand));
+            const snapUser = await getDocs(qUser);
+            if (!snapUser.empty) {
+              const u = snapUser.docs[0].data() as UserProfile;
+              const companyRec: Company = {
+                id: snapUser.docs[0].id,
+                companyName: u.agencyName || 'Empresa',
+                ownerUid: snapUser.docs[0].id,
+                ownerEmail: u.email || '',
+                accessCode: u.companyAccessCode || cand,
+                createdAt: u.createdAt || new Date().toISOString()
+              };
+              // Auto-repair companies collection in background
+              try {
+                await setDoc(doc(db, COMPANIES_COL, companyRec.id), companyRec, { merge: true });
+              } catch (saveErr) {}
+              return companyRec;
+            }
+          } catch (e) {}
         }
 
-        if (rawCode !== cleanCode) {
-          const qUserRaw = query(collection(db, USERS_COL), where('companyAccessCode', '==', rawCode));
-          const snapUserRaw = await getDocs(qUserRaw);
-          if (!snapUserRaw.empty) {
-            const u = snapUserRaw.docs[0].data() as UserProfile;
-            return {
-              id: snapUserRaw.docs[0].id,
-              companyName: u.agencyName || 'Empresa',
-              ownerUid: snapUserRaw.docs[0].id,
-              ownerEmail: u.email,
-              accessCode: cleanCode,
-              createdAt: u.createdAt || new Date().toISOString()
-            };
-          }
+        // 2b. Check by email in users collection
+        if (rawTrimmed.includes('@')) {
+          try {
+            const qUserEmail = query(collection(db, USERS_COL), where('email', '==', rawTrimmed.toLowerCase()));
+            const snapUserEmail = await getDocs(qUserEmail);
+            if (!snapUserEmail.empty) {
+              const u = snapUserEmail.docs[0].data() as UserProfile;
+              const companyRec: Company = {
+                id: snapUserEmail.docs[0].id,
+                companyName: u.agencyName || 'Empresa',
+                ownerUid: snapUserEmail.docs[0].id,
+                ownerEmail: u.email || '',
+                accessCode: u.companyAccessCode || `EMP-${snapUserEmail.docs[0].id.slice(0, 4).toUpperCase()}`,
+                createdAt: u.createdAt || new Date().toISOString()
+              };
+              try {
+                await setDoc(doc(db, COMPANIES_COL, companyRec.id), companyRec, { merge: true });
+              } catch (saveErr) {}
+              return companyRec;
+            }
+          } catch (e) {}
         }
       } catch (userErr) {
-        // May fail if not yet signed in
+        // May fail if not signed in yet
       }
 
       return null;
