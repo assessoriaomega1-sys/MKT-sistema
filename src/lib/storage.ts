@@ -14,6 +14,14 @@ export const storage = {
   getClients: async (): Promise<Client[]> => {
     return await firebaseStorage.getClients();
   },
+
+  getClient: async (id: string): Promise<Client | null> => {
+    return await firebaseStorage.getClient(id);
+  },
+
+  listenToClient: (id: string, callback: (client: Client | null) => void) => {
+    return firebaseStorage.listenToClient(id, callback);
+  },
   
   saveClient: async (client: Client) => {
     await firebaseStorage.saveClient(client);

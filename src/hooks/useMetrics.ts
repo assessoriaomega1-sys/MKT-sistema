@@ -31,14 +31,22 @@ export function useEntries(clientId: string) {
   const [loading, setLoading] = useState(true);
 
   const refresh = async () => {
-    if (clientId) {
+    if (!clientId) {
+      setLoading(false);
+      return;
+    }
+    try {
       const data = await storage.getEntries(clientId);
-      setEntries(data);
+      setEntries(data || []);
+    } catch (err) {
+      console.warn('Error fetching entries in useEntries:', err);
+    } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    setLoading(true);
     refresh();
   }, [clientId]);
 

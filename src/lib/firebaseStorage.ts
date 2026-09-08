@@ -524,6 +524,78 @@ async function syncDeletedTask(taskId: string) {
   }
 }
 
+async function syncCreativeWithTask(creative: Creative) {
+  if (!creative.clientId) return;
+  try {
+    const defaultRef = await getDefaultProcessAndColumn();
+    const dueDate = creative.publishDate || creative.creationDate || new Date().toISOString().split('T')[0];
+    const isDone = creative.status === 'VALIDADO';
+    const taskStatus = isDone ? 'DONE' as const : (creative.status === 'DESCARTADO' ? 'PENDING' as const : (creative.status === 'TESTE_CAMPANHA' ? 'PROGRESS' as const : 'PENDING' as const));
+    
+    // Check if task exists for this creative
+    const tasksRef = collection(db, 'process_tasks');
+    const qTasks = query(tasksRef, where('linkedEventId', '==', creative.id));
+    const tasksSnap = await getDocs(qTasks);
+
+    if (!tasksSnap.empty) {
+      const docOfTask = tasksSnap.docs[0];
+      const existingTask = docOfTask.data() as ProcessTask;
+      await setDoc(docOfTask.ref, cleanData({
+        ...existingTask,
+        title: `[Criativo ${creative.code}] ${creative.title}`,
+        description: `Formato: ${creative.type || 'REELS'}\nGancho: ${creative.hook || '-'}\nRoteiro: ${creative.script || '-'}\nVídeo: ${creative.videoUrl || 'Pendente'}\nStatus Criativo: ${creative.status}`,
+        dueDate: dueDate,
+        status: taskStatus,
+        completedAt: isDone ? new Date().toISOString() : undefined,
+        ownerId: auth.currentUser?.uid
+      }), { merge: true });
+    } else if (creative.syncWithClientCalendar !== false) {
+      const taskId = 'task-cr-' + Math.random().toString(36).substring(7);
+      const newTask: ProcessTask = {
+        id: taskId,
+        processoId: defaultRef.processoId,
+        columnId: defaultRef.columnId,
+        title: `[Criativo ${creative.code}] ${creative.title}`,
+        description: `Formato: ${creative.type || 'REELS'}\nGancho: ${creative.hook || '-'}\nRoteiro: ${creative.script || '-'}\nVídeo: ${creative.videoUrl || 'Pendente'}\nStatus Criativo: ${creative.status}`,
+        clientId: creative.clientId,
+        clientName: creative.clientName,
+        responsible: 'Tráfego / Criativos',
+        dueDate: dueDate,
+        priority: creative.isUrgent ? 'URGENT' : (creative.rating >= 4 ? 'HIGH' : 'MEDIUM'),
+        status: taskStatus,
+        createdAt: new Date().toISOString(),
+        checklist: [],
+        comments: [],
+        attachments: creative.videoUrl ? [{
+          id: 'att-' + Date.now(),
+          name: `Vídeo ${creative.code}`,
+          url: creative.videoUrl,
+          type: 'VIDEO',
+          createdAt: new Date().toISOString()
+        }] : [],
+        linkedEventId: creative.id,
+        linkedEventType: 'creative' as any,
+        history: [
+          {
+            id: 'h-cr-' + Date.now(),
+            action: 'Sincronização Criativo',
+            details: `Tarefa criada automaticamente a partir do Laboratório de Criativos (${creative.code}).`,
+            userName: 'Laboratório de Tráfego',
+            createdAt: new Date().toISOString()
+          }
+        ]
+      };
+
+      await setDoc(doc(db, 'process_tasks', taskId), cleanData({
+        ...newTask,
+        ownerId: auth.currentUser?.uid
+      }), { merge: true });
+    }
+  } catch (error) {
+    console.warn('Warning syncing creative with process task:', error);
+  }
+}
+
 
 export const firebaseStorage = {
   // Payments
@@ -656,16 +728,59 @@ export const firebaseStorage = {
     }
   },
   // Clients
+  getClient: async (id: string): Promise<Client | null> => {
+    if (!auth.currentUser || !id) return null;
+    const path = `${CLIENTS_COL}/${id}`;
+    try {
+      const docSnap = await getDoc(doc(db, CLIENTS_COL, id));
+      if (docSnap.exists()) {
+        return { ...docSnap.data(), id: docSnap.id } as Client;
+      }
+      return null;
+    } catch (error) {
+      console.warn('Error in getClient direct fetch:', error);
+      return null;
+    }
+  },
+
+  listenToClient: (id: string, callback: (client: Client | null) => void) => {
+    if (!auth.currentUser || !id) return () => {};
+    try {
+      return onSnapshot(doc(db, CLIENTS_COL, id), (docSnap) => {
+        if (docSnap.exists()) {
+          callback({ ...docSnap.data(), id: docSnap.id } as Client);
+        } else {
+          callback(null);
+        }
+      }, (error) => {
+        console.warn('Error in listenToClient:', error);
+        callback(null);
+      });
+    } catch (error) {
+      console.warn('Error setting up listenToClient:', error);
+      return () => {};
+    }
+  },
+
   getClients: async (): Promise<Client[]> => {
     if (!auth.currentUser) return [];
     const path = CLIENTS_COL;
     try {
-      const q = query(collection(db, path), where('ownerId', '==', auth.currentUser.uid));
-      const snapshot = await getDocs(q);
+      const activeOwner = getActiveOwnerId();
+      const q = activeOwner 
+        ? query(collection(db, path), where('ownerId', '==', activeOwner))
+        : collection(db, path);
+      const snapshot = await getDocs(q as any);
       return snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Client));
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, path);
-      return [];
+      console.warn('Error in getClients with filter, falling back to direct collection:', error);
+      try {
+        const snapshot = await getDocs(collection(db, path));
+        return snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Client));
+      } catch (fallbackError) {
+        console.error('Error in getClients fallback:', fallbackError);
+        return [];
+      }
     }
   },
 
@@ -696,13 +811,29 @@ export const firebaseStorage = {
   listenToClients: (callback: (clients: Client[]) => void) => {
     if (!auth.currentUser) return () => {};
     const path = CLIENTS_COL;
-    const q = query(collection(db, path), where('ownerId', '==', auth.currentUser.uid));
-    return onSnapshot(q, (snapshot) => {
-      const clients = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Client));
-      callback(clients);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-    });
+    try {
+      const activeOwner = getActiveOwnerId();
+      const q = activeOwner
+        ? query(collection(db, path), where('ownerId', '==', activeOwner))
+        : collection(db, path);
+      return onSnapshot(q as any, (snapshot) => {
+        const clients = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Client));
+        callback(clients);
+      }, (error) => {
+        console.warn('Error in listenToClients with filter, falling back:', error);
+        try {
+          return onSnapshot(collection(db, path), (snapshot) => {
+            const clients = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Client));
+            callback(clients);
+          });
+        } catch (fbErr) {
+          console.error('Fallback in listenToClients failed:', fbErr);
+        }
+      });
+    } catch (error) {
+      console.warn('Setup listenToClients failed:', error);
+      return () => {};
+    }
   },
 
   listenToAllEntries: (callback: (entries: MetricEntry[]) => void) => {
@@ -721,14 +852,10 @@ export const firebaseStorage = {
 
   // Entries
   getEntries: async (clientId: string): Promise<MetricEntry[]> => {
-    if (!auth.currentUser) return [];
+    if (!clientId) return [];
     const path = `${CLIENTS_COL}/${clientId}/entries`;
     try {
-      const q = query(
-        collection(db, path), 
-        where('ownerId', '==', auth.currentUser.uid)
-      );
-      const snapshot = await getDocs(q);
+      const snapshot = await getDocs(collection(db, path));
       const entriesList = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MetricEntry));
       // Sort by date asc in memory to avoid composite index errors
       return entriesList.sort((a, b) => {
@@ -737,7 +864,7 @@ export const firebaseStorage = {
         return dateA.localeCompare(dateB);
       });
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, path);
+      console.warn('Error in getEntries for clientId:', clientId, error);
       return [];
     }
   },
@@ -931,6 +1058,7 @@ export const firebaseStorage = {
         ...creative,
         ownerId: auth.currentUser.uid
       }), { merge: true });
+      await syncCreativeWithTask(creative);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, path);
     }
@@ -940,6 +1068,16 @@ export const firebaseStorage = {
     const path = `${CREATIVES_COL}/${id}`;
     try {
       await deleteDoc(doc(db, CREATIVES_COL, id));
+      // Also delete any linked process task
+      try {
+        const qTasks = query(collection(db, 'process_tasks'), where('linkedEventId', '==', id));
+        const tasksSnap = await getDocs(qTasks);
+        for (const tDoc of tasksSnap.docs) {
+          await deleteDoc(tDoc.ref);
+        }
+      } catch (tErr) {
+        console.warn('Error cleaning up linked task for creative:', tErr);
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, path);
     }
@@ -948,13 +1086,29 @@ export const firebaseStorage = {
   listenToCreatives: (callback: (creatives: Creative[]) => void) => {
     if (!auth.currentUser) return () => {};
     const path = CREATIVES_COL;
-    const q = query(collection(db, path), where('ownerId', '==', auth.currentUser.uid));
-    return onSnapshot(q, (snapshot) => {
-      const creatives = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Creative));
-      callback(creatives);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
-    });
+    try {
+      const activeOwner = getActiveOwnerId();
+      const q = activeOwner
+        ? query(collection(db, path), where('ownerId', '==', activeOwner))
+        : collection(db, path);
+      return onSnapshot(q as any, (snapshot) => {
+        const creatives = snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Creative));
+        callback(creatives);
+      }, (error) => {
+        console.warn('Error in listenToCreatives with ownerId, trying general collection:', error);
+        try {
+          return onSnapshot(collection(db, path), (snap) => {
+            const creatives = snap.docs.map(d => ({ ...d.data(), id: d.id } as Creative));
+            callback(creatives);
+          });
+        } catch (fbErr) {
+          console.error('Fallback listenToCreatives failed:', fbErr);
+        }
+      });
+    } catch (error) {
+      console.warn('Setup listenToCreatives failed:', error);
+      return () => {};
+    }
   },
 
   // PROCESSES
